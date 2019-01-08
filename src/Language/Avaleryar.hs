@@ -31,10 +31,10 @@ data Term c v = Val c | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable, 
 
 data Lit c v = Lit Pred [Term c v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
-data AssertionRef c v = BuiltinAssn c | TermAssn (Term c v) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data ARef c v = ARNative Text | ARTerm (Term c v) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
 -- give unqualified body literals the "current" assertion
-data BodyLit c v = Says (Term c v) (Lit c v)
+data BodyLit c v = Says (ARef c v) (Lit c v)
   deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
 data Rule c v = Rule (Lit c v) [BodyLit c v]
@@ -53,17 +53,29 @@ type TextVar = Text
 type EVar = (Epoch, TextVar)
 
 type Env c = Map EVar (Term c EVar)
--- type Db  c = Map c (Map Pred [Rule c TextVar])
-type Db m c = Map c (Map Pred (Lit c EVar -> AvaleryarT c m ()))
+-- type Db m c = Map c (Map Pred (Lit c EVar -> AvaleryarT c m ()))
 
--- type Assertion = Text
--- type Db' m c = Assertion -> m (Either (Builtin c) (Db c))
+-- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
+data Db m c = Db
+  { rulesDb  :: Map c    (Map Pred (Lit c EVar -> AvaleryarT c m ()))
+  , nativeDb :: Map Text (Map Pred (Lit c EVar -> AvaleryarT c m ()))
+  }
 
--- data RT c = RT {
---     env   :: Env c
---   , epoch :: Epoch
---   , db    :: Db c
---   } deriving (Eq, Ord, Read, Show)
+instance Ord c => Semigroup (Db m c) where
+  Db rdb ndb <> Db rdb' ndb' = Db (rdb <> rdb') (ndb <> ndb')
+
+instance Ord c => Monoid (Db m c) where
+  mempty = Db mempty mempty
+  mappend = (<>)
+
+alookup :: (Alternative f, Ord k) => k -> Map k a -> f a
+alookup k m = maybe empty pure $ Map.lookup k m
+
+loadRule :: (Value c, Monad m) => c -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadRule c p = gets (rulesDb . db) >>= alookup c >>= alookup p
+
+loadNative :: Monad m => Text -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadNative n p = gets (nativeDb . db) >>= alookup n >>= alookup p
 
 data RT m c = RT {
     env   :: Env c
@@ -73,9 +85,6 @@ data RT m c = RT {
 
 newtype AvaleryarT c m a = AvaleryarT { unAvaleryarT :: StateT (RT m c) (Stream m) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m c), MonadYield)
-
-alookup :: (Alternative f, Ord k) => k -> Map k a -> f a
-alookup k m = maybe empty pure $ Map.lookup k m
 
 lookupEVar :: Monad m => EVar -> AvaleryarT c m (Term c EVar)
 lookupEVar ev = do
@@ -104,26 +113,18 @@ subst var@(Var ev) = gets env >>= maybe (pure var) subst . Map.lookup ev
 
 type Goal c = BodyLit c EVar
 
--- loadRule :: (Value c, Monad m) => c -> Pred -> AvaleryarT c m (Rule c EVar)
--- loadRule a p = do
---   rt@RT {..} <- get
---   rules <- alookup a db >>= alookup p
---   put rt {epoch = succ epoch}
---   msum [pure $ fmap (epoch,) rule | rule <- rules]
-
--- resolve :: (Value c, Monad m) => Goal c -> AvaleryarT c m (Lit c EVar)
--- resolve (assn `Says` Lit p as) = do
---   Val c <- subst assn -- assertions should be ground by now
---   Rule (Lit _ as') body <- yield' $ loadRule c p
---   zipWithM_ unifyTerm as as'
---   traverse_ resolve body
---   Lit p <$> traverse subst as
+loadResolver :: (Value c, Monad m) => ARef c EVar -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadResolver (ARNative n) p = loadNative n p
+loadResolver (ARTerm   t) p = do
+  Val c <- subst t -- mode checking should assure that assertion references are ground by now
+  loadRule c p
 
 resolve :: (Value c, Monad m) => Goal c -> AvaleryarT c m (Lit c EVar)
 resolve (assn `Says` lit@(Lit p as)) = do
-  Val c <- subst assn
-  RT {..} <- get
-  resolver <- yield' $ (alookup c db >>= alookup p)
+  -- Val c <- subst assn
+  -- RT {..} <- get
+  -- resolver <- yield' $ (alookup c db >>= alookup p)
+  resolver <- yield' $ loadResolver assn p
   resolver lit
   Lit p <$> traverse subst as
 
@@ -150,28 +151,8 @@ data Mode v = In v | Out v
   deriving (Eq, Ord, Read, Show)
 
 
-  
-
-
-
-
 
 -------------------------------------------------------------------------------------
--- testDb :: Map Pred [(Rule Text TextVar)]
--- testDb = Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
---   where rules = reverse [Rule (Lit (Pred "foo" 2) [Var "flurb", Var "baz"])
---                         [(Lit (Pred "foo" 2) [Val "bar", Val "quux"])]
---                 , Rule (Lit (Pred "foo" 2) [Val "bar", Val "quux"])
---                     []
---                 , Rule (Lit (Pred "foo" 2) [Val "aoeu", Val "Val"]) []]
-
--- tdb :: Map Pred [(Rule Text TextVar)]
--- tdb = Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
---   where rules =  [Rule (Lit (Pred  "a" 1) [Var "A"])
---                         [(Lit (Pred "b" 1) [Var "A"])]
---                 , Rule (Lit (Pred "b" 1) [Val "b"]) []]
-
-
 showEVar :: EVar -> String
 showEVar (Epoch e, v) = unpack v ++ "_" ++ show e
 
@@ -189,23 +170,13 @@ parseLit (p :/ as) = Lit (Pred p $ length as) [termify a | a <- as]
                       _       -> Val a
 
 parseRule :: ConcRule -> Rule Text TextVar
-parseRule (hd :- body) = Rule (parseLit hd) (Says (Val "system") . parseLit <$> body)
+parseRule (hd :- body) = Rule (parseLit hd) (Says (ARTerm $ Val "system") . parseLit <$> body)
 
 -- mkDb :: [Rule Text TextVar] -> Map Text (Map Pred [Rule Text TextVar])
 mkDb :: Monad m => [Rule Text TextVar] -> Db m Text
-mkDb rules = Map.singleton "system" . fmap compileRules $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
+mkDb rules = flip Db mempty . Map.singleton "system" . fmap compileRules $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
-testStuff x y db q = runM (Just x) (Just y) . flip evalStateT (RT mempty 0 db) . unAvaleryarT . resolve . fmap (-1,) . Says (Val "system") . parseLit $ q
-
-
-foo :: Monad m => Db m Text
-foo = Map.update (Just . Map.insert (Pred "palindromic" 1) palindromic) "system" . mkDb $ fmap parseRule [
-       "foo" :/ ["?x"] :- ["bar" :/ ["?x"], "palindromic" :/ ["?x"]]
-      , "bar" :/ ["thingy"] :- []
-      , "bar" :/ ["foof"]   :- []
-      , "bar" :/ ["splood"] :- []
-      , "bar" :/ ["ooo"] :- []
-      , "foo" :/ ["seven"] :- []]
+testStuff x y db q = runM (Just x) (Just y) . flip evalStateT (RT mempty 0 db) . unAvaleryarT . resolve . fmap (-1,) . Says (ARTerm $ Val "system") . parseLit $ q
 
 
 {-
@@ -326,3 +297,4 @@ tpqs = ["path" :/ [x, y] | (x, y) <- paths]
                 , ("5", "2")
                 , ("5", "3")
                 , ("5", "4")]
+

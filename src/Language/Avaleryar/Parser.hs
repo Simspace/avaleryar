@@ -26,8 +26,9 @@ lexeme = L.lexeme ws
 symbol :: Text -> Parser Text
 symbol = L.symbol ws
 
-semi, comma, dot :: Parser ()
+semi, colon, comma, dot :: Parser ()
 semi  = void $ symbol ";"
+colon = void $ symbol ":"
 comma = void $ symbol ","
 dot   = void $ symbol "."
 
@@ -56,7 +57,7 @@ var :: Parser RawVar
 var = RawVar <$> (char '?' *> ident) <?> "variable"
 
 term :: Parser c -> Parser (Term c RawVar)
-term val = Val <$> lexeme val <|> Var <$> var
+term val =  Var <$> var <|> Val <$> lexeme val
 
 lit :: Parser c -> Parser (Lit c RawVar)
 lit val = label "literal" $ do
@@ -64,13 +65,21 @@ lit val = label "literal" $ do
   args <- parens (term val `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
+aref :: Parser c -> Parser (ARef c RawVar)
+aref val = colon *> (ARNative <$> sym) <|> ARTerm <$> term val
+
+fixmeDefaultAssertion = ARNative "FIXME: default reader thing"
+
+bodyLit :: Parser c -> Parser (BodyLit c RawVar)
+bodyLit val = Says <$> (try (aref val <* symbol "says") <|> pure fixmeDefaultAssertion) <*> lit val
 
 rule :: Parser c -> Parser (Rule c RawVar)
 rule val = Rule <$> (lit val) <*> (body <|> dot *> pure [])
-  where bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
+  where -- bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
+        bodyLits = bodyLit val `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
-path = T.pack . unlines $ ["path(?x, ?y) :- path(?x, ?z), edge(?z, ?y).  foo() :- 4 says bar().",
+path = T.pack . unlines $ ["path(?x, ?y) :- path(?x, ?z), edge(?z, ?y).  foo() :- bar().",
         "path(?x, ?y) :- edge(?x, ?y).",
         "edge(1, 2).",
         "edge(2, 3).",
