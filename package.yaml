@@ -1,0 +1,13 @@
+name: avaleryar
+
+
+library:
+  source-dirs: src
+  dependencies:
+    - base
+
+    - containers
+    - megaparsec
+    - mtl
+    - text
+
