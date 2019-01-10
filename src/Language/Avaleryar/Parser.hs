@@ -1,112 +1,111 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 module Language.Avaleryar.Parser where
 
 import           Control.Monad              (void)
+import           Control.Monad.Reader
+import           Data.Bifunctor             (first)
 import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
+import qualified Data.Text.IO               as T
 import           Data.Void
+import           Language.Haskell.TH.Quote  (QuasiQuoter)
+import           QQLiterals
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Language.Avaleryar
 
-type Parser = Parsec Void Text
+data ParserSettings c = ParserSettings
+  { valueParser :: Parsec Void Text c
+  , currentAssertionName :: c
+  }
+
+type Parser c = ReaderT (ParserSettings c) (Parsec Void Text)
 
 -- ws :: (MonadParsec e s m, Token s ~ Char) => m ()
-ws :: Parser ()
+ws :: Parser c ()
 ws = L.space space1 (L.skipLineComment ";") empty
 
-lexeme :: Parser a -> Parser a
+lexeme :: Parser c a -> Parser c a
 lexeme = L.lexeme ws
 
-symbol :: Text -> Parser Text
+symbol :: Text -> Parser c Text
 symbol = L.symbol ws
 
-semi, colon, comma, dot :: Parser ()
+semi, colon, comma, dot :: Parser c ()
 semi  = void $ symbol ";"
 colon = void $ symbol ":"
 comma = void $ symbol ","
 dot   = void $ symbol "."
 
-parens :: Parser a -> Parser a
+parens :: Parser c a -> Parser c a
 parens = between (symbol "(") (symbol ")")
 
 -- I'm stealing ':' for myself, might take more later
-symInit, symCont :: Parser Char
+symInit, symCont :: Parser c Char
 symInit = letterChar <|> oneOf ("!@$%&*/<=>~_^" :: String)
 symCont = symInit <|> digitChar <|> oneOf (".+-?" :: String)
 
-stringLiteral :: Parser Text
+stringLiteral :: Parser c Text
 stringLiteral = T.pack <$> (char '"' *> manyTill L.charLiteral (char '"'))
 
-sym :: Parser Text
+sym :: Parser c Text
 sym = lexeme (T.pack <$> go) <?> "symbol"
   where go = (:) <$> symInit <*> many symCont
 
-ident :: Parser Text
+val :: Parser c c
+val = ReaderT $ asks valueParser
+
+ident :: Parser c Text
 ident = sym <?> "identifer"
 
 newtype RawVar = RawVar { unRawVar :: Text }
   deriving (Eq, Ord, Read, Show, IsString)
 
-var :: Parser RawVar
+var :: Parser c RawVar
 var = RawVar <$> (char '?' *> ident) <?> "variable"
 
-term :: Parser c -> Parser (Term c RawVar)
-term val =  Var <$> var <|> Val <$> lexeme val
+term :: Parser c (Term c RawVar)
+term =  Var <$> var <|> Val <$> lexeme val
 
-lit :: Parser c -> Parser (Lit c RawVar)
-lit val = label "literal" $ do
+lit :: Parser c (Lit c RawVar)
+lit = label "literal" $ do
   ftor <- ident
-  args <- parens (term val `sepBy` comma)
+  args <- parens (term `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
-aref :: Parser c -> Parser (ARef c RawVar)
-aref val = colon *> (ARNative <$> sym) <|> ARTerm <$> term val
+aref :: Parser c (ARef c RawVar)
+aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
-fixmeDefaultAssertion = ARNative "FIXME: default reader thing"
+currentAssertion :: Parser c (ARef c RawVar)
+currentAssertion = ARTerm . Val <$> asks currentAssertionName
 
-bodyLit :: Parser c -> Parser (BodyLit c RawVar)
-bodyLit val = Says <$> (try (aref val <* symbol "says") <|> pure fixmeDefaultAssertion) <*> lit val
+bodyLit :: Parser c (BodyLit c RawVar)
+bodyLit = Says <$> (try (aref <* symbol "says") <|> currentAssertion) <*> lit
 
-rule :: Parser c -> Parser (Rule c RawVar)
-rule val = Rule <$> (lit val) <*> (body <|> dot *> pure [])
+rule :: Parser c (Rule c RawVar)
+rule = Rule <$> lit <*> (body <|> dot *> pure [])
   where -- bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
-        bodyLits = bodyLit val `sepBy1` comma
+        bodyLits = bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
-path = T.pack . unlines $ ["path(?x, ?y) :- path(?x, ?z), edge(?z, ?y).  foo() :- bar().",
-        "path(?x, ?y) :- edge(?x, ?y).",
-        "edge(1, 2).",
-        "edge(2, 3).",
-        "edge(3, 4).",
-        "edge(3, 1).",
-        "edge(1, 5).",
-        "edge(5, 4)."]
+testParse :: Text -> Text -> Either String [Rule Text RawVar]
+testParse assn = first errorBundlePretty . parse go (T.unpack assn)
+  where textParser = T.pack <$> some alphaNumChar
+        go         = runReaderT (ws *> many rule) (ParserSettings textParser assn)
 
-          
--- testPath = do
---     assertSucc path "path(1, 2)"
---     assertSucc path "path(1, 3)"
---     assertSucc path "path(1, 4)"
---     assertSucc path "path(1, 5)"
---     assertSucc path "path(2, 1)"
---     assertSucc path "path(2, 3)"
---     assertSucc path "path(2, 4)"
---     assertSucc path "path(2, 5)"
---     assertSucc path "path(3, 1)"
---     assertSucc path "path(3, 2)"
---     assertSucc path "path(3, 4)"
---     assertSucc path "path(3, 5)"
---     assertFail path "path(4, 1)"
---     assertFail path "path(4, 2)"
---     assertFail path "path(4, 3)"
---     assertFail path "path(4, 5)"
---     assertFail path "path(5, 1)"
---     assertFail path "path(5, 2)"
---     assertFail path "path(5, 3)"
---     assertSucc path "path(5, 4)"
+testParseFile :: FilePath -> IO (Either String [Rule Text RawVar])
+testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
+
+avaQQParser :: String -> Either String [Rule Text RawVar]
+avaQQParser = first errorBundlePretty . parse go "qq" . T.pack
+  where textParser = T.pack <$> some alphaNumChar
+        go         = runReaderT (many rule) (ParserSettings textParser "qq")
+
+avaQQ :: QuasiQuoter
+avaQQ = qqLiteral avaQQParser 'avaQQParser

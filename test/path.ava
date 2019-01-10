@@ -1,0 +1,38 @@
+; -*- mode: prolog -*-
+
+path(?x, ?y) :-
+    path(?x, ?z),
+    edge(?z, ?y).
+
+path(?x, ?y) :-
+    edge(?x, ?y).
+
+edge(1, 2).
+edge(2, 3).
+edge(3, 4).
+edge(3, 1).
+edge(1, 5).
+edge(5, 4).
+
+
+;; These should all succeed
+; path(1, 2)
+; path(1, 3)
+; path(1, 4)
+; path(1, 5)
+; path(2, 1)
+; path(2, 3)
+; path(2, 4)
+; path(2, 5)
+; path(3, 1)
+; path(3, 2)
+; path(3, 4)
+; path(3, 5)
+; path(4, 1)
+; path(4, 2)
+; path(4, 3)
+; path(4, 5)
+; path(5, 1)
+; path(5, 2)
+; path(5, 3)
+; path(5, 4)

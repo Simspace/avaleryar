@@ -9,5 +9,7 @@ library:
     - containers
     - megaparsec
     - mtl
+    - qq-literals
+    - template-haskell
     - text
 

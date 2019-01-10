@@ -1,0 +1,16 @@
+;; -*- mode: prolog -*-
+
+;; b is the disjunction of c, an infinite success, and d.  None of c''s
+;; successes lead to a success for a, but d is still reached.
+
+a(?x) :- b(?x), d(?x).
+b(?x) :- c(?x).
+b(?x) :- d(?x).
+c(0).
+c(?x) :- c(?x).
+d(1).
+
+;; This should succeed
+
+; a(?x)
+

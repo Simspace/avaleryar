@@ -1,0 +1,18 @@
+;; -*- mode: prolog -*-
+
+;; b gives two answers, c gives infinite success for both, d rejects b''s
+;; first answer, but we still get to the second.
+
+a(?x) :- b(?x), c(?y), d(?x).
+b(0).
+b(1).
+c(0).
+c(?x) :- c(?x).
+d(1).
+
+
+;; This should succeed
+
+; a(?x).
+
+
