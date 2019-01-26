@@ -105,7 +105,7 @@ testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
 avaQQParser :: String -> Either String [Rule Text RawVar]
 avaQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where textParser = T.pack <$> some alphaNumChar
-        go         = runReaderT (many rule) (ParserSettings textParser "qq")
+        go         = runReaderT (ws *> many rule) (ParserSettings textParser "qq")
 
 avaQQ :: QuasiQuoter
 avaQQ = qqLiteral avaQQParser 'avaQQParser

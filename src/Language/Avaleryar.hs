@@ -11,12 +11,14 @@
 module Language.Avaleryar where
 
 import           Control.Applicative
+import           Control.Monad.Except
 import           Control.Monad.Fail
 import           Control.Monad.State
+import           Data.Bool
 import           Data.Foldable
 import           Data.Map            (Map)
 import qualified Data.Map            as Map
-import           Data.Text           (Text, unpack)
+import           Data.Text           (Text, unpack, pack)
 import           Data.Void           (Void)
 
 import Control.Monad.FBackTrackT
@@ -47,13 +49,10 @@ type Value c = (Ord c, Show c)
 newtype Epoch = Epoch { getEpoch :: Int }
   deriving (Eq, Ord, Read, Show, Num, Enum)
 
--- newtype IntVar = IntVar { getIntVar :: Int }
---   deriving (Eq, Ord, Read, Show, Num, Enum)
 type TextVar = Text
 type EVar = (Epoch, TextVar)
 
 type Env c = Map EVar (Term c EVar)
--- type Db m c = Map c (Map Pred (Lit c EVar -> AvaleryarT c m ()))
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
 data Db m c = Db
@@ -85,6 +84,12 @@ data RT m c = RT {
 
 newtype AvaleryarT c m a = AvaleryarT { unAvaleryarT :: StateT (RT m c) (Stream m) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m c), MonadYield)
+
+
+runAvalaryarT :: Monad m => Int -> Int -> Db m c -> AvaleryarT c m a -> m [a]
+runAvalaryarT x y db = runM (Just x) (Just y)
+                     . flip evalStateT (RT mempty 0 db)
+                     . unAvaleryarT
 
 lookupEVar :: Monad m => EVar -> AvaleryarT c m (Term c EVar)
 lookupEVar ev = do
@@ -144,36 +149,3 @@ palindromic (Lit (Pred "palindromic" 1) [mp]) = do
   guard (show v == reverse (show v))
 palindromic lit = mzero
 
-data Instantiation v = Free v | Ground v
-  deriving (Eq, Ord, Read, Show)
-
-data Mode v = In v | Out v
-  deriving (Eq, Ord, Read, Show)
-
-
-
--------------------------------------------------------------------------------------
-showEVar :: EVar -> String
-showEVar (Epoch e, v) = unpack v ++ "_" ++ show e
-
-showEnv :: Show c => Env c -> String
-showEnv = unwords . fmap go . Map.toList
-  where go (k, v) = showEVar k ++ " = " ++ show v
-
-data ConcRule = ConcLit :- [ConcLit]
-data ConcLit  = Text :/ [Text]
-
-parseLit :: ConcLit -> Lit Text TextVar
-parseLit (p :/ as) = Lit (Pred p $ length as) [termify a | a <- as]
-  where termify a = case unpack a of
-                      ('?':_) -> Var a
-                      _       -> Val a
-
-parseRule :: ConcRule -> Rule Text TextVar
-parseRule (hd :- body) = Rule (parseLit hd) (Says (ARTerm $ Val "system") . parseLit <$> body)
-
--- mkDb :: [Rule Text TextVar] -> Map Text (Map Pred [Rule Text TextVar])
-mkDb :: Monad m => [Rule Text TextVar] -> Db m Text
-mkDb rules = flip Db mempty . Map.singleton "system" . fmap compileRules $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
-
-testStuff x y db q = runM (Just x) (Just y) . flip evalStateT (RT mempty 0 db) . unAvaleryarT . resolve . fmap (-1,) . Says (ARTerm $ Val "system") . parseLit $ q
