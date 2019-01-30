@@ -27,6 +27,14 @@ data ModeEnv c = ModeEnv
   { nativeModes  :: Map Text (Map Pred (ModedLit c))
   , groundedVars :: [TextVar] }
 
+-- TODO: Actually use this type; try pushing mode checking through parsing for pretty errors?
+data ModeError = UnboundNativeAssertion Text
+               | UnboundNativePredicate Text Pred
+               | FVModeRestricted TextVar TextVar -- first var is the free one; TODO: Suck less
+               | FVInAssertionPosition TextVar
+               | FVInRuleHead TextVar
+                 deriving (Eq, Ord, Read, Show)
+
 newtype ModeCheck c m a = ModeCheck { unModeCheck :: ExceptT Text (StateT (ModeEnv c) m) a }
   deriving (Functor, Applicative, Monad, MonadError Text)
 

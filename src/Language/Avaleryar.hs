@@ -54,11 +54,18 @@ type EVar = (Epoch, TextVar)
 
 type Env c = Map EVar (Term c EVar)
 
+newtype RulesDb  m c = RulesDb  { unRulesDb  :: Map c (Map Pred (Lit c EVar -> AvaleryarT c m ())) }
+  deriving (Semigroup, Monoid)
+newtype NativeDb m c = NativeDb { unNativeDb :: Map Text (Map Pred (Lit c EVar -> AvaleryarT c m ())) }
+  deriving (Semigroup, Monoid)
+
+
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
 data Db m c = Db
-  { rulesDb  :: Map c    (Map Pred (Lit c EVar -> AvaleryarT c m ()))
-  , nativeDb :: Map Text (Map Pred (Lit c EVar -> AvaleryarT c m ()))
+  { rulesDb  :: RulesDb  m c
+  , nativeDb :: NativeDb m c
   }
+
 
 instance Ord c => Semigroup (Db m c) where
   Db rdb ndb <> Db rdb' ndb' = Db (rdb <> rdb') (ndb <> ndb')
@@ -71,10 +78,10 @@ alookup :: (Alternative f, Ord k) => k -> Map k a -> f a
 alookup k m = maybe empty pure $ Map.lookup k m
 
 loadRule :: (Value c, Monad m) => c -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
-loadRule c p = gets (rulesDb . db) >>= alookup c >>= alookup p
+loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
 loadNative :: Monad m => Text -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
-loadNative n p = gets (nativeDb . db) >>= alookup n >>= alookup p
+loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 data RT m c = RT {
     env   :: Env c
@@ -133,8 +140,12 @@ resolve (assn `Says` lit@(Lit p as)) = do
   resolver lit
   Lit p <$> traverse subst as
 
-compileRules :: (Value c, Monad m) => [Rule c TextVar] -> Lit c EVar -> AvaleryarT c m ()
-compileRules rules (Lit _ qas) = do
+
+-- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
+-- given a query that applies, and that the rules it was handed are all for the same predicate.
+-- This is not the function you want.  FIXME: Suck less
+compilePred :: (Value c, Monad m) => [Rule c TextVar] -> Lit c EVar -> AvaleryarT c m ()
+compilePred rules (Lit _ qas) = do
   rt@RT {..} <- get
   put rt {epoch = succ epoch}
   let rules' = fmap (epoch,) <$> rules
@@ -142,6 +153,9 @@ compileRules rules (Lit _ qas) = do
         zipWithM_ unifyTerm has qas
         traverse_ resolve body
   msum $ go <$> rules'
+
+compileRules :: (Value c, Monad m) => [Rule c TextVar] -> Map Pred (Lit c EVar -> AvaleryarT c m ())
+compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
 palindromic :: Monad m => Lit Text EVar -> AvaleryarT Text m ()
 palindromic (Lit (Pred "palindromic" 1) [mp]) = do
