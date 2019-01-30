@@ -13,4 +13,5 @@ library:
     - qq-literals
     - template-haskell
     - text
+    - wl-pprint-text
 
