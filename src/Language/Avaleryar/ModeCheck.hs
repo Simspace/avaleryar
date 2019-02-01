@@ -13,7 +13,7 @@ import           Data.Map             (Map)
 import qualified Data.Map             as Map
 import           Data.Text            (Text, pack)
 
-import Language.Avaleryar
+import Language.Avaleryar.Syntax
 
 data Instantiation = Free | Ground
   deriving (Eq, Ord, Read, Show)

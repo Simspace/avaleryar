@@ -14,16 +14,15 @@ import qualified Data.Text.IO               as T
 import           Data.Void
 import           Language.Haskell.TH.Quote  (QuasiQuoter)
 import           QQLiterals
+import           System.FilePath            (dropExtension)
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import Language.Avaleryar
+import Language.Avaleryar.Syntax
+import Language.Avaleryar.Value
 
-data ParserSettings c = ParserSettings
-  { valueParser :: Parsec Void Text c
-  , currentAssertionName :: c
-  }
+data ParserSettings c = ParserSettings { currentAssertionName :: c }
 
 type Parser c = ReaderT (ParserSettings c) (Parsec Void Text)
 
@@ -58,8 +57,8 @@ sym :: Parser c Text
 sym = lexeme (T.pack <$> go) <?> "symbol"
   where go = (:) <$> symInit <*> many symCont
 
-val :: Parser c c
-val = ReaderT $ asks valueParser
+val :: Value c => Parser c c
+val = lift parseValue
 
 ident :: Parser c Text
 ident = sym <?> "identifer"
@@ -70,42 +69,54 @@ newtype RawVar = RawVar { unRawVar :: Text }
 var :: Parser c RawVar
 var = RawVar <$> (char '?' *> ident) <?> "variable"
 
-term :: Parser c (Term c RawVar)
+term :: Value c => Parser c (Term c RawVar)
 term =  Var <$> var <|> Val <$> lexeme val
 
-lit :: Parser c (Lit c RawVar)
+lit :: Value c => Parser c (Lit c RawVar)
 lit = label "literal" $ do
   ftor <- ident
   args <- parens (term `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
-aref :: Parser c (ARef c RawVar)
+aref :: Value c => Parser c (ARef c RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
 currentAssertion :: Parser c (ARef c RawVar)
 currentAssertion = ARTerm . Val <$> asks currentAssertionName
 
-bodyLit :: Parser c (BodyLit c RawVar)
+bodyLit :: Value c => Parser c (BodyLit c RawVar)
 bodyLit = Says <$> (try (aref <* symbol "says") <|> currentAssertion) <*> lit
 
-rule :: Parser c (Rule c RawVar)
+rule :: Value c => Parser c (Rule c RawVar)
 rule = Rule <$> lit <*> (body <|> dot *> pure [])
   where -- bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
         bodyLits = bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
+ruleFile :: Value c => Parser c [Rule c RawVar]
+ruleFile = ws *> many rule
+
+parseFile :: (Value c) =>
+              FilePath
+              -> Maybe (FilePath -> String)
+              -> IO (Either String [Rule c RawVar])
+parseFile path modAssn = do
+  let assn = valueFromString . maybe dropExtension ($) modAssn $ path
+  file <- T.readFile path
+  pure . first errorBundlePretty $ parse (runReaderT ruleFile (ParserSettings assn)) path file
+  
+  
+
 testParse :: Text -> Text -> Either String [Rule Text RawVar]
 testParse assn = first errorBundlePretty . parse go (T.unpack assn)
-  where textParser = T.pack <$> some alphaNumChar
-        go         = runReaderT (ws *> many rule) (ParserSettings textParser assn)
+  where go = runReaderT ruleFile (ParserSettings assn)
 
 testParseFile :: FilePath -> IO (Either String [Rule Text RawVar])
 testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
 
 avaQQParser :: String -> Either String [Rule Text RawVar]
 avaQQParser = first errorBundlePretty . parse go "qq" . T.pack
-  where textParser = T.pack <$> some alphaNumChar
-        go         = runReaderT (ws *> many rule) (ParserSettings textParser "qq")
+  where go = runReaderT (ws *> many rule) (ParserSettings "qq")
 
 avaQQ :: QuasiQuoter
 avaQQ = qqLiteral avaQQParser 'avaQQParser
