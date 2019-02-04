@@ -20,101 +20,97 @@ import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Language.Avaleryar.Syntax
-import Language.Avaleryar.Value
 
-data ParserSettings c = ParserSettings { currentAssertionName :: c }
+data ParserSettings = ParserSettings { currentAssertionName :: Value }
 
-type Parser c = ReaderT (ParserSettings c) (Parsec Void Text)
+type Parser = ReaderT ParserSettings (Parsec Void Text)
 
 -- ws :: (MonadParsec e s m, Token s ~ Char) => m ()
-ws :: Parser c ()
+ws :: Parser ()
 ws = L.space space1 (L.skipLineComment ";") empty
 
-lexeme :: Parser c a -> Parser c a
+lexeme :: Parser a -> Parser a
 lexeme = L.lexeme ws
 
-symbol :: Text -> Parser c Text
+symbol :: Text -> Parser Text
 symbol = L.symbol ws
 
-semi, colon, comma, dot :: Parser c ()
+semi, colon, comma, dot :: Parser ()
 semi  = void $ symbol ";"
 colon = void $ symbol ":"
 comma = void $ symbol ","
 dot   = void $ symbol "."
 
-parens :: Parser c a -> Parser c a
+parens :: Parser a -> Parser a
 parens = between (symbol "(") (symbol ")")
 
 -- I'm stealing ':' for myself, might take more later
-symInit, symCont :: Parser c Char
+symInit, symCont :: Parser Char
 symInit = letterChar <|> oneOf ("!@$%&*/<=>~_^" :: String)
 symCont = symInit <|> digitChar <|> oneOf (".+-?" :: String)
 
-stringLiteral :: Parser c Text
+stringLiteral :: Parser Text
 stringLiteral = T.pack <$> (char '"' *> manyTill L.charLiteral (char '"'))
 
-sym :: Parser c Text
+sym :: Parser Text
 sym = lexeme (T.pack <$> go) <?> "symbol"
   where go = (:) <$> symInit <*> many symCont
 
-val :: Value c => Parser c c
-val = lift parseValue
+val :: Parser Value
+val =     I <$> L.signed (pure ()) L.decimal
+      <|> T <$> stringLiteral
+      <|> S <$> (T.pack <$> some (alphaNumChar <|> symbolChar))
+      <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
 
-ident :: Parser c Text
+ident :: Parser Text
 ident = sym <?> "identifer"
 
-newtype RawVar = RawVar { unRawVar :: Text }
-  deriving (Eq, Ord, Read, Show, IsString)
-
-var :: Parser c RawVar
+var :: Parser RawVar
 var = RawVar <$> (char '?' *> ident) <?> "variable"
 
-term :: Value c => Parser c (Term c RawVar)
+term :: Parser (Term RawVar)
 term =  Var <$> var <|> Val <$> lexeme val
 
-lit :: Value c => Parser c (Lit c RawVar)
+lit :: Parser (Lit RawVar)
 lit = label "literal" $ do
   ftor <- ident
   args <- parens (term `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
-aref :: Value c => Parser c (ARef c RawVar)
+aref :: Parser (ARef RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
-currentAssertion :: Parser c (ARef c RawVar)
+currentAssertion :: Parser (ARef RawVar)
 currentAssertion = ARTerm . Val <$> asks currentAssertionName
 
-bodyLit :: Value c => Parser c (BodyLit c RawVar)
+bodyLit :: Parser (BodyLit RawVar)
 bodyLit = Says <$> (try (aref <* symbol "says") <|> currentAssertion) <*> lit
 
-rule :: Value c => Parser c (Rule c RawVar)
+rule :: Parser (Rule RawVar)
 rule = Rule <$> lit <*> (body <|> dot *> pure [])
   where -- bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
         bodyLits = bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
-ruleFile :: Value c => Parser c [Rule c RawVar]
+ruleFile :: Parser [Rule RawVar]
 ruleFile = ws *> many rule
 
-parseFile :: (Value c) =>
-              FilePath
-              -> Maybe (FilePath -> String)
-              -> IO (Either String [Rule c RawVar])
+parseFile :: FilePath -> Maybe (FilePath -> String) -> IO (Either String [Rule RawVar])
 parseFile path modAssn = do
-  let assn = valueFromString . maybe dropExtension ($) modAssn $ path
+  let assn = fromString . maybe dropExtension ($) modAssn $ path
   file <- T.readFile path
   pure . first errorBundlePretty $ parse (runReaderT ruleFile (ParserSettings assn)) path file
   
   
 
-testParse :: Text -> Text -> Either String [Rule Text RawVar]
+testParse :: Text -> Text -> Either String [Rule RawVar]
 testParse assn = first errorBundlePretty . parse go (T.unpack assn)
-  where go = runReaderT ruleFile (ParserSettings assn)
+  where go = runReaderT ruleFile (ParserSettings $ S assn)
 
-testParseFile :: FilePath -> IO (Either String [Rule Text RawVar])
+testParseFile :: FilePath -> IO (Either String [Rule RawVar])
 testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
 
-avaQQParser :: String -> Either String [Rule Text RawVar]
+avaQQParser :: String -> Either String [Rule RawVar]
 avaQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where go = runReaderT (ws *> many rule) (ParserSettings "qq")
 

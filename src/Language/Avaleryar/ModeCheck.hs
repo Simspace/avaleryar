@@ -21,10 +21,10 @@ data Instantiation = Free | Ground
 data Mode v = In v | Out v
   deriving (Eq, Ord, Read, Show)
 
-type ModedLit c = Lit c (Mode TextVar)
+type ModedLit = Lit (Mode TextVar)
 
-data ModeEnv c = ModeEnv
-  { nativeModes  :: Map Text (Map Pred (ModedLit c))
+data ModeEnv = ModeEnv
+  { nativeModes  :: Map Text (Map Pred ModedLit)
   , groundedVars :: [TextVar] }
 
 -- TODO: Actually use this type; try pushing mode checking through parsing for pretty errors?
@@ -35,10 +35,10 @@ data ModeError = UnboundNativeAssertion Text
                | FVInRuleHead TextVar
                  deriving (Eq, Ord, Read, Show)
 
-newtype ModeCheck c m a = ModeCheck { unModeCheck :: ExceptT Text (StateT (ModeEnv c) m) a }
+newtype ModeCheck m a = ModeCheck { unModeCheck :: ExceptT Text (StateT ModeEnv m) a }
   deriving (Functor, Applicative, Monad, MonadError Text)
 
-getMode :: Monad m => BodyLit c TextVar -> ModeCheck c m (ModedLit c)
+getMode :: Monad m => BodyLit TextVar -> ModeCheck m ModedLit
 getMode (ARTerm _ `Says` lit) = pure . fmap In $ lit
 getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
   amap <- gets nativeModes
@@ -47,7 +47,7 @@ getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
   pmap <- maybe (throwError missingAssertion) pure $ Map.lookup assn amap
   maybe (throwError missingPredicate) pure $ Map.lookup p pmap
 
-getNativeMode :: Monad m => Text -> Pred -> ModeCheck c m (ModedLit c)
+getNativeMode :: Monad m => Text -> Pred -> ModeCheck m ModedLit
 getNativeMode assn p = ModeCheck $ do
   amap <- gets nativeModes
   let missingAssertion = "Unbound native assertion: '" <> assn <> "'"
@@ -58,14 +58,14 @@ getNativeMode assn p = ModeCheck $ do
 displayPred :: Pred -> Text
 displayPred (Pred f n) = f <> "/" <> (pack . show $ n)
 
-ground :: (Monad m, Foldable f) => f TextVar -> ModeCheck c m ()
+ground :: (Monad m, Foldable f) => f TextVar -> ModeCheck m ()
 ground vs = ModeCheck (modify go)
   where go env@ModeEnv {..} = env { groundedVars = toList vs <> groundedVars }
 
-grounded :: Monad m => TextVar -> ModeCheck c m Bool
+grounded :: Monad m => TextVar -> ModeCheck m Bool
 grounded v = ModeCheck $ gets (elem v . groundedVars)
 
-modeCheckRule :: Monad m => Rule c TextVar -> ModeCheck c m ()
+modeCheckRule :: Monad m => Rule TextVar -> ModeCheck m ()
 modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
   where modeCheckBody (ARNative assn `Says` Lit p bas) = do
           Lit _ mas <- getNativeMode assn p
@@ -92,8 +92,8 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
           isGrounded <- grounded v
           unless isGrounded $ throwError freeInHead
 
-modeCheck :: (Foldable t) => Map Text (Map Pred (ModedLit c)) -> t (Rule c TextVar) -> Either Text ()
+modeCheck :: (Foldable t) => Map Text (Map Pred ModedLit) -> t (Rule TextVar) -> Either Text ()
 modeCheck native = traverse_ $ flip evalState (ModeEnv native mempty) . runExceptT . unModeCheck . modeCheckRule
 
-modeCheck' :: (Foldable t) => t (Rule c TextVar) -> Either Text ()
+modeCheck' :: (Foldable t) => t (Rule TextVar) -> Either Text ()
 modeCheck' = modeCheck mempty

@@ -21,60 +21,58 @@ import Control.Monad.FBackTrackT
 
 import Language.Avaleryar.Syntax
 
-newtype RulesDb  m c = RulesDb  { unRulesDb  :: Map c (Map Pred (Lit c EVar -> AvaleryarT c m ())) }
+newtype RulesDb  m = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> AvaleryarT m ())) }
   deriving (Semigroup, Monoid)
-newtype NativeDb m c = NativeDb { unNativeDb :: Map Text (Map Pred (Lit c EVar -> AvaleryarT c m ())) }
+newtype NativeDb m = NativeDb { unNativeDb :: Map Text (Map Pred (Lit EVar -> AvaleryarT m ())) }
   deriving (Semigroup, Monoid)
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
-data Db m c = Db
-  { rulesDb  :: RulesDb  m c
-  , nativeDb :: NativeDb m c
+data Db m = Db
+  { rulesDb  :: RulesDb  m
+  , nativeDb :: NativeDb m
   }
 
-
-instance Ord c => Semigroup (Db m c) where
+instance Semigroup (Db m) where
   Db rdb ndb <> Db rdb' ndb' = Db (rdb <> rdb') (ndb <> ndb')
 
-instance Ord c => Monoid (Db m c) where
+instance Monoid (Db m) where
   mempty = Db mempty mempty
   mappend = (<>)
 
 alookup :: (Alternative f, Ord k) => k -> Map k a -> f a
 alookup k m = maybe empty pure $ Map.lookup k m
 
-loadRule :: (Value c, Monad m) => c -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadRule :: (Monad m) => Value -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
 loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
-loadNative :: Monad m => Text -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
 loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
-data RT m c = RT {
-    env   :: Env c
+data RT m = RT {
+    env   :: Env
   , epoch :: Epoch
-  , db    :: Db m c
+  , db    :: Db m
   }
 
-newtype AvaleryarT c m a = AvaleryarT { unAvaleryarT :: StateT (RT m c) (Stream m) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m c), MonadYield)
+newtype AvaleryarT m a = AvaleryarT { unAvaleryarT :: StateT (RT m) (Stream m) a }
+  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m), MonadYield)
 
-
-runAvalaryarT :: Monad m => Int -> Int -> Db m c -> AvaleryarT c m a -> m [a]
+runAvalaryarT :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m [a]
 runAvalaryarT x y db = runM (Just x) (Just y)
                      . flip evalStateT (RT mempty 0 db)
                      . unAvaleryarT
 
-lookupEVar :: Monad m => EVar -> AvaleryarT c m (Term c EVar)
+lookupEVar :: Monad m => EVar -> AvaleryarT m (Term EVar)
 lookupEVar ev = do
   RT {..} <- get
   alookup ev env
 
-lookupVar :: Monad m => TextVar -> AvaleryarT c m (Term c EVar)
+lookupVar :: Monad m => TextVar -> AvaleryarT m (Term EVar)
 lookupVar v = do
   ev <- (,) <$> gets epoch <*> pure v
   lookupEVar ev
 
-unifyTerm :: (Value c, Monad m) => Term c EVar -> Term c EVar -> AvaleryarT c m ()
+unifyTerm :: (Monad m) => Term EVar -> Term EVar -> AvaleryarT m ()
 unifyTerm t t' = do
   ts  <- subst t
   ts' <- subst t'
@@ -85,19 +83,19 @@ unifyTerm t t' = do
       (_, Var v) -> put rt {env = Map.insert v ts  env}
       _          -> empty -- ts /= ts', both are values
 
-subst :: Monad m => Term c EVar -> AvaleryarT c m (Term c EVar)
+subst :: Monad m => Term EVar -> AvaleryarT m (Term EVar)
 subst val@(Val _)  = pure val
 subst var@(Var ev) = gets env >>= maybe (pure var) subst . Map.lookup ev
 
-type Goal c = BodyLit c EVar
+type Goal = BodyLit EVar
 
-loadResolver :: (Value c, Monad m) => ARef c EVar -> Pred -> AvaleryarT c m (Lit c EVar -> AvaleryarT c m ())
+loadResolver :: (Monad m) => ARef EVar -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
 loadResolver (ARNative n) p = loadNative n p
 loadResolver (ARTerm   t) p = do
   Val c <- subst t -- mode checking should assure that assertion references are ground by now
   loadRule c p
 
-resolve :: (Value c, Monad m) => Goal c -> AvaleryarT c m (Lit c EVar)
+resolve :: (Monad m) => Goal -> AvaleryarT m (Lit EVar)
 resolve (assn `Says` lit@(Lit p as)) = do
   -- Val c <- subst assn
   -- RT {..} <- get
@@ -110,7 +108,7 @@ resolve (assn `Says` lit@(Lit p as)) = do
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
-compilePred :: (Value c, Monad m) => [Rule c TextVar] -> Lit c EVar -> AvaleryarT c m ()
+compilePred :: (Monad m) => [Rule TextVar] -> Lit EVar -> AvaleryarT m ()
 compilePred rules (Lit _ qas) = do
   rt@RT {..} <- get
   put rt {epoch = succ epoch}
@@ -120,17 +118,15 @@ compilePred rules (Lit _ qas) = do
         traverse_ resolve body
   msum $ go <$> rules'
 
-compileRules :: (Value c, Monad m) => [Rule c TextVar] -> Map Pred (Lit c EVar -> AvaleryarT c m ())
+compileRules :: (Monad m) => [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT m ())
 compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
-query :: (Value c, IsString c, Monad m) => String -> Text -> [Term c TextVar] -> AvaleryarT c m (Lit c EVar)
+query :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
 query assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (-1,)) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
-palindromic :: Monad m => Lit Text EVar -> AvaleryarT Text m ()
-palindromic (Lit (Pred "palindromic" 1) [mp]) = do
-  Val v <- subst mp
-  guard (show v == reverse (show v))
-palindromic lit = mzero
+insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> Db m -> Db m
+insertRuleAssertion assn rules db = db { rulesDb = go (rulesDb db) }
+  where go = RulesDb . Map.insert (S assn) rules . unRulesDb

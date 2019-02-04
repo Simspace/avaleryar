@@ -1,23 +1,17 @@
 
 module Language.Avaleryar where
 
--- import           Control.Applicative
--- import           Control.Monad.Except
--- import           Control.Monad.Fail
--- import           Control.Monad.State
--- import           Data.Bool
--- import           Data.Foldable
--- import           Data.Map            (Map)
--- import qualified Data.Map            as Map
--- import           Data.String
--- import           Data.Text           (Text, unpack, pack)
--- import           Data.Void           (Void)
+import Data.Coerce
+import qualified Data.Text.IO as T
+import Text.PrettyPrint.Leijen.Text
 
--- import Control.Monad.FBackTrackT
-
--- import Debug.Trace
-
-import Language.Avaleryar.Parser (parseFile)
 import Language.Avaleryar.ModeCheck (modeCheck)
+import Language.Avaleryar.Parser (parseFile)
+import Language.Avaleryar.PrettyPrinter ()
+import Language.Avaleryar.Syntax (RawVar(..), TextVar)
 
-
+foo path = do
+  Right stuff <- parseFile path Nothing
+  case modeCheck mempty $ fmap (fmap unRawVar) stuff of
+    Left err -> T.putStrLn err
+    Right _  -> putDoc $ foldMap pretty stuff
