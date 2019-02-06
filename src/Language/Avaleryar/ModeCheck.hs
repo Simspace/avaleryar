@@ -39,7 +39,7 @@ newtype ModeCheck m a = ModeCheck { unModeCheck :: ExceptT Text (StateT ModeEnv 
   deriving (Functor, Applicative, Monad, MonadError Text)
 
 getMode :: Monad m => BodyLit TextVar -> ModeCheck m ModedLit
-getMode (ARTerm _ `Says` lit) = pure . fmap In $ lit
+getMode (ARTerm _ `Says` lit) = pure . fmap Out $ lit
 getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
   amap <- gets nativeModes
   let missingAssertion = "Unbound native assertion: '" <> assn <> "'"
@@ -80,9 +80,9 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
 
 
         modeCheckArg (Val _)       a       = ground a -- treat constants like in-mode variables
-        modeCheckArg (Var (In  _)) a       = ground a -- predicates ground in-mode variables
-        modeCheckArg (Var (Out _)) (Val _) = pure ()
-        modeCheckArg (Var (Out o)) (Var v) = do
+        modeCheckArg (Var (Out  _)) a       = ground a -- predicates ground in-mode variables
+        modeCheckArg (Var (In _)) (Val _) = pure ()
+        modeCheckArg (Var (In o)) (Var v) = do
           let modeMismatch = "variable '" <> v <> "' is free in mode-restricted position: '" <> o <> "'"
           isGrounded <- grounded v
           unless isGrounded $ throwError modeMismatch
