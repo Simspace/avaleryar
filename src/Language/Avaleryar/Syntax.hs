@@ -36,6 +36,9 @@ data Rule v = Rule (Lit v) [BodyLit v]
 
 type Fact = Lit Void
 
+factToRule :: Fact -> Rule v
+factToRule lit = Rule (vacuous lit) []
+
 newtype Epoch = Epoch { getEpoch :: Int }
   deriving (Eq, Ord, Read, Show, Num, Enum)
 

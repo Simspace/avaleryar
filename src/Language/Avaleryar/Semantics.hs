@@ -48,8 +48,8 @@ loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
 loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
-data RT m = RT {
-    env   :: Env
+data RT m = RT
+  { env   :: Env
   , epoch :: Epoch
   , db    :: Db m
   }
@@ -127,6 +127,5 @@ query assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fm
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
-insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> Db m -> Db m
-insertRuleAssertion assn rules db = db { rulesDb = go (rulesDb db) }
-  where go = RulesDb . Map.insert (S assn) rules . unRulesDb
+insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
+insertRuleAssertion assn rules = RulesDb . Map.insert (S assn) rules . unRulesDb
