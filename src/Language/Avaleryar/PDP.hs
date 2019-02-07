@@ -16,6 +16,7 @@ import           Data.Text            (Text, pack)
 import qualified Data.Text            as T
 import           Data.Void            (vacuous)
 import           System.FilePath      (dropExtension)
+import           Text.PrettyPrint.Leijen.Text (putDoc, pretty)
 
 import Language.Avaleryar.ModeCheck (modeCheck)
 import Language.Avaleryar.Parser    (parseFile)
@@ -80,6 +81,11 @@ runQuery facts p args  = do
   answers <- runAvaWith (insertApplicationAssertion facts) $ query "system" p args
   flip traverse answers $ \lit -> do
      traverse (throwError . VarInQueryResults . snd) lit
+
+queryPretty :: MonadIO m => [Fact] -> Text -> [Term TextVar] -> PDP m ()
+queryPretty facts p args = do
+  answers <- runQuery facts p args
+  liftIO $ mapM_ (putDoc . pretty . factToRule @TextVar) answers 
 
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
 insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
