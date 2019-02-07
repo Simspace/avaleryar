@@ -16,7 +16,7 @@ import           Data.Text            (Text, pack)
 import           Data.Void            (vacuous)
 import           System.FilePath      (dropExtension)
 
-import Language.Avaleryar.ModeCheck (ModedLit, modeCheck)
+import Language.Avaleryar.ModeCheck (modeCheck)
 import Language.Avaleryar.Parser    (parseFile)
 import Language.Avaleryar.PrettyPrinter
 import Language.Avaleryar.Semantics

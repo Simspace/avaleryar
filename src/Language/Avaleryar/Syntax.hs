@@ -12,12 +12,11 @@ import Data.Void
 
 data Value = I Int
            | T Text
-           | S Text -- symbol
            | B Bool
              deriving (Eq, Ord, Read, Show)
 
 instance IsString Value where
-  fromString = S . fromString
+  fromString = T . fromString
 
 data Pred = Pred Text Int deriving (Eq, Ord, Read, Show)
 
@@ -47,5 +46,34 @@ type EVar = (Epoch, TextVar)
 newtype RawVar = RawVar { unRawVar :: Text }
   deriving (Eq, Ord, Read, Show, IsString)
 
-
 type Env = Map EVar (Term EVar)
+
+data Mode v = In v | Out v
+  deriving (Eq, Ord, Read, Show)
+
+type ModedLit = Lit (Mode TextVar)
+
+class Valuable a where
+  toValue :: a -> Value
+  fromValue :: Value -> Maybe a
+
+instance Valuable Value where
+  toValue = id
+  fromValue = Just
+
+instance Valuable Text where
+  toValue = T
+  fromValue (T a) = Just a
+  fromValue _     = Nothing
+instance Valuable Int  where
+  toValue = I
+  fromValue (I a) = Just a
+  fromValue _     = Nothing
+
+instance Valuable Bool where
+  toValue = B
+  fromValue (B a) = Just a
+  fromValue _     = Nothing
+
+val :: Valuable a => a -> Term v
+val = Val . toValue

@@ -3,7 +3,9 @@
 
 module Language.Avaleryar.PrettyPrinter where
 
-import Text.PrettyPrint.Leijen.Text
+import           Data.Char                    (isSpace)
+import qualified Data.Text                    as T
+import           Text.PrettyPrint.Leijen.Text
 
 import Language.Avaleryar.Syntax
 
@@ -32,9 +34,10 @@ instance Pretty v => Pretty (Rule v) where
 
 instance Pretty Value where
   pretty (I n) = pretty n
-  pretty (T t) = pretty (show t) -- want the quotes/escaping
-  pretty (S s) = pretty s -- shouldn't require quoting
   pretty (B b) = if b then "#t" else "#f"
+  pretty (T t) = if T.any isSpace t
+                 then pretty (show t) -- want the quotes/escaping
+                 else pretty t        -- display as a symbol
 
 instance Pretty RawVar where
   pretty = pretty . unRawVar

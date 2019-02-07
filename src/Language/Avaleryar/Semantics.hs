@@ -1,3 +1,6 @@
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -20,6 +23,10 @@ import           Data.Void            (Void)
 import Control.Monad.FBackTrackT
 
 import Language.Avaleryar.Syntax
+
+import qualified Data.Text as T
+import Debug.Trace
+
 
 newtype RulesDb  m = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> AvaleryarT m ())) }
   deriving (Semigroup, Monoid)
@@ -105,6 +112,13 @@ resolve (assn `Says` lit@(Lit p as)) = do
   Lit p <$> traverse subst as
 
 
+-- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
+-- same length.
+unifyArgs :: Monad m => [Term EVar] -> [Term EVar] -> AvaleryarT m ()
+unifyArgs [] []         = pure ()
+unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
+unifyArgs _ _           = empty
+
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
@@ -114,7 +128,7 @@ compilePred rules (Lit _ qas) = do
   put rt {epoch = succ epoch}
   let rules' = fmap (epoch,) <$> rules
       go (Rule (Lit _ has) body) = do
-        zipWithM_ unifyTerm has qas
+        unifyArgs has qas
         traverse_ resolve body
   msum $ go <$> rules'
 
@@ -128,4 +142,70 @@ query assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fm
                   _       -> ARTerm . Val $ fromString assn
 
 insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
-insertRuleAssertion assn rules = RulesDb . Map.insert (S assn) rules . unRulesDb
+insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
+
+---------------------
+
+data Solely a = Solely a
+
+inMode :: Mode TextVar
+inMode = In "+"
+
+outMode :: Mode TextVar
+outMode = Out "-"
+
+class ToNative a where
+  toNative :: Monad m => a -> [Term EVar] -> AvaleryarT m ()
+  inferMode :: a -> [Mode TextVar]
+
+instance ToNative () where
+  toNative () [] = pure ()
+  toNative () _  = empty
+  inferMode ()   = []
+
+-- TODO: This is either slick or extremely hokey, figure out which.
+instance ToNative Bool where
+  toNative b [] = guard b
+  toNative _ _  = empty
+  inferMode _   = []
+
+instance Valuable a => ToNative (Solely a) where
+  toNative (Solely a) args = unifyArgs [val a] args
+  inferMode _ = [outMode]
+
+instance (Valuable a, Valuable b) => ToNative (a, b) where
+  toNative (a, b) args = unifyArgs [val a, val b] args
+  inferMode _ = [outMode, outMode]
+
+instance (Valuable a, Valuable b, Valuable c) => ToNative (a, b, c) where
+  toNative (a, b, c) args = unifyArgs [val a, val b, val c] args
+  inferMode _ = [outMode, outMode, outMode]
+
+instance (Valuable a, ToNative b) => ToNative (a -> b) where
+  toNative f (x:xs) = do
+    Val x' <- subst x
+    case fromValue x' of
+      Just a  -> toNative (f a) xs
+      Nothing -> empty
+  toNative _ _      = trace "tonative ->" empty
+  inferMode f = inMode : inferMode (f undefined)
+
+mkNativePred :: (ToNative a, Monad m) => a -> Lit EVar -> AvaleryarT m ()
+mkNativePred f (Lit _ args) = toNative f args
+
+foo :: Monad m => NativeDb m
+foo = NativeDb . Map.singleton "base" . Map.fromList $ preds
+  where preds = [ (Pred "not=" 2, mkNativePred neq) -- ((/=) @Value))
+                , (Pred "even" 1, trace "called even" mkNativePred (even @Int))
+                , (Pred "odd"  1, mkNativePred (odd @Int))
+                , (Pred "rev" 2, mkNativePred (Solely . T.reverse))]
+
+bar :: Map Text (Map Pred ModedLit)
+bar = Map.singleton "base" . Map.fromList $ modes
+  where modes = [ (Pred "not=" 2, Lit (Pred "not=" 2) $ fmap Var $ inferMode ((/=) @Value))
+                , (Pred "even" 1, Lit (Pred "even" 1) $ fmap Var $ inferMode (even @Int))
+                , (Pred "odd"  1, Lit (Pred "odd"  1) $ fmap Var $ inferMode (odd @Int))
+                , (Pred "rev" 2,  Lit (Pred "rev" 2)  $ fmap Var $ inferMode (Solely . T.reverse))]
+
+neq :: Value -> Value -> Bool
+neq v1 v2 = traceShow (v1, v2) v1 /= v2

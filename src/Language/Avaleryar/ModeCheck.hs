@@ -18,11 +18,6 @@ import Language.Avaleryar.Syntax
 data Instantiation = Free | Ground
   deriving (Eq, Ord, Read, Show)
 
-data Mode v = In v | Out v
-  deriving (Eq, Ord, Read, Show)
-
-type ModedLit = Lit (Mode TextVar)
-
 data ModeEnv = ModeEnv
   { nativeModes  :: Map Text (Map Pred ModedLit)
   , groundedVars :: [TextVar] }

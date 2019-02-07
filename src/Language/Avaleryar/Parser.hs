@@ -56,11 +56,11 @@ sym :: Parser Text
 sym = lexeme (T.pack <$> go) <?> "symbol"
   where go = (:) <$> symInit <*> many symCont
 
-val :: Parser Value
-val =     I <$> L.signed (pure ()) L.decimal
-      <|> T <$> stringLiteral
-      <|> S <$> (T.pack <$> some (alphaNumChar <|> symbolChar))
-      <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
+value :: Parser Value
+value =     I <$> L.signed (pure ()) L.decimal
+        <|> T <$> stringLiteral
+        <|> T <$> (T.pack <$> some (alphaNumChar <|> symbolChar)) -- unquoted symbols
+        <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
 
 ident :: Parser Text
 ident = sym <?> "identifer"
@@ -69,7 +69,7 @@ var :: Parser RawVar
 var = RawVar <$> (char '?' *> ident) <?> "variable"
 
 term :: Parser (Term RawVar)
-term =  Var <$> var <|> Val <$> lexeme val
+term =  Var <$> var <|> Val <$> lexeme value
 
 lit :: Parser (Lit RawVar)
 lit = label "literal" $ do
@@ -105,7 +105,7 @@ parseFile path modAssn = do
 
 testParse :: Text -> Text -> Either String [Rule RawVar]
 testParse assn = first errorBundlePretty . parse go (T.unpack assn)
-  where go = runReaderT ruleFile (ParserSettings $ S assn)
+  where go = runReaderT ruleFile (ParserSettings $ T assn)
 
 testParseFile :: FilePath -> IO (Either String [Rule RawVar])
 testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
