@@ -24,13 +24,15 @@ import Control.Monad.FBackTrackT
 
 import Language.Avaleryar.Syntax
 
-import qualified Data.Text as T
-import Debug.Trace
 
+data NativePred m = NativePred
+  { nativePred :: Lit EVar -> AvaleryarT m ()
+  , nativeSig  :: ModedLit
+  }
 
 newtype RulesDb  m = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> AvaleryarT m ())) }
   deriving (Semigroup, Monoid)
-newtype NativeDb m = NativeDb { unNativeDb :: Map Text (Map Pred (Lit EVar -> AvaleryarT m ())) }
+newtype NativeDb m = NativeDb { unNativeDb :: Map Text (Map Pred (NativePred m)) }
   deriving (Semigroup, Monoid)
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
@@ -53,7 +55,7 @@ loadRule :: (Monad m) => Value -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m
 loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
 loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
-loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
+loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
 
 data RT m = RT
   { env   :: Env
@@ -187,25 +189,5 @@ instance (Valuable a, ToNative b) => ToNative (a -> b) where
     case fromValue x' of
       Just a  -> toNative (f a) xs
       Nothing -> empty
-  toNative _ _      = trace "tonative ->" empty
+  toNative _ _      = empty
   inferMode f = inMode : inferMode (f undefined)
-
-mkNativePred :: (ToNative a, Monad m) => a -> Lit EVar -> AvaleryarT m ()
-mkNativePred f (Lit _ args) = toNative f args
-
-foo :: Monad m => NativeDb m
-foo = NativeDb . Map.singleton "base" . Map.fromList $ preds
-  where preds = [ (Pred "not=" 2, mkNativePred neq) -- ((/=) @Value))
-                , (Pred "even" 1, trace "called even" mkNativePred (even @Int))
-                , (Pred "odd"  1, mkNativePred (odd @Int))
-                , (Pred "rev" 2, mkNativePred (Solely . T.reverse))]
-
-bar :: Map Text (Map Pred ModedLit)
-bar = Map.singleton "base" . Map.fromList $ modes
-  where modes = [ (Pred "not=" 2, Lit (Pred "not=" 2) $ fmap Var $ inferMode ((/=) @Value))
-                , (Pred "even" 1, Lit (Pred "even" 1) $ fmap Var $ inferMode (even @Int))
-                , (Pred "odd"  1, Lit (Pred "odd"  1) $ fmap Var $ inferMode (odd @Int))
-                , (Pred "rev" 2,  Lit (Pred "rev" 2)  $ fmap Var $ inferMode (Solely . T.reverse))]
-
-neq :: Value -> Value -> Bool
-neq v1 v2 = traceShow (v1, v2) v1 /= v2

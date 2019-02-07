@@ -13,6 +13,7 @@ import           Data.Coerce
 import           Data.Map             (Map)
 import qualified Data.Map             as Map
 import           Data.Text            (Text, pack)
+import qualified Data.Text            as T
 import           Data.Void            (vacuous)
 import           System.FilePath      (dropExtension)
 
@@ -25,7 +26,6 @@ import Language.Avaleryar.Syntax
 
 data PDPConfig m = PDPConfig
   { systemAssertion  :: Map Pred (Lit EVar -> AvaleryarT m ()) -- ^ can't change system assertion at runtime
-  , nativeModes      :: Map Text (Map Pred ModedLit)
   , nativeAssertions :: NativeDb m -- ^ Needs to be in the reader so changes induce a new mode-check on rules
   , maxDepth         :: Int
   , maxAnswers       :: Int
@@ -65,7 +65,7 @@ runAvaWith f ma = do
 
 checkRules :: Monad m => [Rule TextVar] -> PDP m ()
 checkRules rules = do
-  nm <- asksConfig nativeModes
+  nm <- asksConfig (fmap (fmap nativeSig) . unNativeDb . nativeAssertions) -- TODO: Suck less
   either (throwError . ModeError) pure $ modeCheck nm rules
 
 -- | unsafe because there's no authz on the submission
@@ -92,12 +92,28 @@ unsafeSubmitFile path = do
   rules <- liftIO $ parseFile path (Just munge)
   unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
 
+mkNativePred :: (ToNative a, Monad m) => Text -> a -> NativePred m
+mkNativePred pn f = NativePred np moded
+  where np (Lit _ args) = toNative f args
+        modes = inferMode f
+        moded = Lit (Pred pn $ length modes) (Var <$> modes)
+
+mkNativeDb :: Monad m => Text -> [NativePred m] -> NativeDb m
+mkNativeDb assn preds = NativeDb . Map.singleton assn $ Map.fromList [(p, np) | np@(NativePred _ (Lit p _)) <- preds]
+
+demoNativeDb :: Monad m => NativeDb m
+demoNativeDb = mkNativeDb "base" preds
+  where preds = [ mkNativePred "not=" $ (/=) @Value
+                , mkNativePred "even" $ even @Int
+                , mkNativePred "odd"  $ odd @Int
+                , mkNativePred "rev"  $ Solely . T.reverse]
 
 demo :: IO (Either PDPError (PDPConfig IO))
 demo = runExceptT $ do
+  let modes = fmap (fmap nativeSig) $ unNativeDb (demoNativeDb :: NativeDb IO)
   sys <- ExceptT . fmap (first ParseError . coerce) $ parseFile "system.ava" (Just dropExtension)
-  ExceptT . pure . first ModeError $ modeCheck mempty sys
-  pure $ PDPConfig (compileRules sys) mempty mempty 50 10
+  ExceptT . pure . first ModeError $ modeCheck modes sys
+  pure $ PDPConfig (compileRules sys) demoNativeDb 50 10
 
 -- Everyone: Alec, why not just use lenses?
 -- Me: ... what's that over there!? ... ::smokebomb::
