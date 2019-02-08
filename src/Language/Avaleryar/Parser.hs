@@ -110,9 +110,24 @@ testParse assn = first errorBundlePretty . parse go (T.unpack assn)
 testParseFile :: FilePath -> IO (Either String [Rule RawVar])
 testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
 
-avaQQParser :: String -> Either String [Rule RawVar]
-avaQQParser = first errorBundlePretty . parse go "qq" . T.pack
+rulesQQParser :: String -> Either String [Rule RawVar]
+rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where go = runReaderT (ws *> many rule) (ParserSettings "qq")
 
-avaQQ :: QuasiQuoter
-avaQQ = qqLiteral avaQQParser 'avaQQParser
+queryQQParser :: String -> Either String (Lit TextVar)
+queryQQParser = first errorBundlePretty . parse go "qq" . T.pack
+  where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
+
+factQQParser :: String -> Either String Fact
+factQQParser = first errorBundlePretty . parse go "qq" . T.pack
+  where go = runReaderT (ws *> fmap (fmap $ error "variable in fact") lit) (ParserSettings "qq")
+
+
+rulesqq :: QuasiQuoter
+rulesqq = qqLiteral rulesQQParser 'rulesQQParser
+
+qry :: QuasiQuoter
+qry = qqLiteral queryQQParser 'queryQQParser
+
+fct :: QuasiQuoter
+fct = qqLiteral factQQParser 'factQQParser

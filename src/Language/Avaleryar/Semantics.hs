@@ -1,10 +1,11 @@
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 module Language.Avaleryar.Semantics where
 
@@ -64,7 +65,7 @@ data RT m = RT
   }
 
 newtype AvaleryarT m a = AvaleryarT { unAvaleryarT :: StateT (RT m) (Stream m) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m), MonadYield)
+  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m), MonadYield, MonadIO)
 
 runAvalaryarT :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m [a]
 runAvalaryarT x y db = runM (Just x) (Just y)
@@ -157,8 +158,12 @@ outMode :: Mode TextVar
 outMode = Out "-"
 
 class ToNative a where
-  toNative :: Monad m => a -> [Term EVar] -> AvaleryarT m ()
+  toNative :: MonadIO m => a -> [Term EVar] -> AvaleryarT m ()
   inferMode :: a -> [Mode TextVar]
+
+inferMode1 :: forall a proxy. ToNative a => proxy a -> [Mode TextVar]
+inferMode1 _ = inferMode @a undefined
+
 
 instance ToNative () where
   toNative () [] = pure ()
@@ -170,6 +175,11 @@ instance ToNative Bool where
   toNative b [] = guard b
   toNative _ _  = empty
   inferMode _   = []
+
+-- TODO: This is also either slick or extremely hokey, figure out which.
+instance ToNative a => ToNative [a] where
+  toNative as xs = msum [toNative a xs | a <- as]
+  inferMode      = inferMode1 
 
 instance Valuable a => ToNative (Solely a) where
   toNative (Solely a) args = unifyArgs [val a] args
@@ -191,3 +201,10 @@ instance (Valuable a, ToNative b) => ToNative (a -> b) where
       Nothing -> empty
   toNative _ _      = empty
   inferMode f = inMode : inferMode (f undefined)
+
+instance ToNative a => ToNative (IO a) where
+  toNative ma xs = do
+    a <- liftIO ma
+    toNative a xs
+
+  inferMode ma = inferMode1 ma
