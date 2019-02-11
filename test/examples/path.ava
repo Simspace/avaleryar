@@ -28,6 +28,10 @@ edge(5, 4).
 ; path(3, 2)
 ; path(3, 4)
 ; path(3, 5)
+; path(5, 4)
+
+;; These should all fail
+
 ; path(4, 1)
 ; path(4, 2)
 ; path(4, 3)
@@ -35,4 +39,3 @@ edge(5, 4).
 ; path(5, 1)
 ; path(5, 2)
 ; path(5, 3)
-; path(5, 4)

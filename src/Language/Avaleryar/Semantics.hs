@@ -144,6 +144,10 @@ query assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fm
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
+-- | TODO: Suck less
+query' :: Monad m => String -> Lit TextVar -> AvaleryarT m (Lit EVar)
+query' assn (Lit (Pred p _) args) = query assn p args
+
 insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
 insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
 

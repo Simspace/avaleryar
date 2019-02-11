@@ -15,3 +15,18 @@ library:
     - text
     - wl-pprint-text
 
+tests:
+  avaleryar-tests:
+    main: Main.hs
+    source-dirs: [test]
+    dependencies:
+      - base 
+      - avaleryar
+
+      - hspec
+      - hspec-core
+
+      - HUnit
+      - QuickCheck
+      - directory
+      - filepath
