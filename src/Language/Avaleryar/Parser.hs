@@ -5,6 +5,7 @@
 module Language.Avaleryar.Parser
   ( -- * Parsers
     parseFile
+  , parseQuery
   , parseText
     -- * Quasiquoters
   , qry
@@ -112,6 +113,10 @@ parseFile path modAssn = do
 parseText :: Text -> Text -> Either String [Rule RawVar]
 parseText assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT ruleFile (ParserSettings $ T assn)
+
+parseQuery :: Text -> Either String (Lit TextVar)
+parseQuery = first errorBundlePretty . parse go "qq"
+  where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
 
 testParseFile :: FilePath -> IO (Either String [Rule RawVar])
 testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
