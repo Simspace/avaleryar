@@ -2,7 +2,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TypeApplications           #-}
 
 module Language.Avaleryar.PDP where
 
@@ -93,12 +95,20 @@ submitAssertion assn rules facts = checkSubmit facts >> unsafeSubmitAssertion as
 
 submitFile :: MonadIO m => FilePath -> [Fact] -> PDP m ()
 submitFile path facts = checkSubmit facts >> unsafeSubmitFile path
+
 -- | unsafe because there's no authz on the submission
 -- TODO: make a safe version
 unsafeSubmitAssertion :: Monad m => Text -> [Rule TextVar] -> PDP m ()
 unsafeSubmitAssertion assn rules = do
   checkRules rules
   modifyRulesDb $ insertRuleAssertion assn (compileRules rules)
+
+-- | TODO: ergonomics, protect "system", etc.
+unsafeSubmitFile :: MonadIO m => FilePath -> PDP m ()
+unsafeSubmitFile path = do
+  let munge = dropExtension
+  rules <- liftIO $ parseFile path (Just munge)
+  unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
 
 runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m [Fact]
 runQuery facts p args  = do
@@ -120,13 +130,6 @@ testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
 insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
 insertApplicationAssertion = insertRuleAssertion "application" . compileRules . fmap factToRule
-
--- | TODO: ergonomics, protect "system", etc.
-unsafeSubmitFile :: MonadIO m => FilePath -> PDP m ()
-unsafeSubmitFile path = do
-  let munge = dropExtension
-  rules <- liftIO $ parseFile path (Just munge)
-  unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
 
 mkNativePred :: (ToNative a, MonadIO m) => Text -> a -> NativePred m
 mkNativePred pn f = NativePred np moded
@@ -173,3 +176,4 @@ modifyRulesDb f = PDP $ modify f
 
 putRulesDb :: Monad m => RulesDb m -> PDP m ()
 putRulesDb ndb = modifyRulesDb (const ndb)
+

@@ -77,3 +77,7 @@ instance Valuable Bool where
 
 val :: Valuable a => a -> Term v
 val = Val . toValue
+
+class Factual a where
+  toFact :: a -> Fact
+  fromFact :: Fact -> Maybe a

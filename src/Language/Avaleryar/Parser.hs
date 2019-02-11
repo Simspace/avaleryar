@@ -2,7 +2,15 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
 
-module Language.Avaleryar.Parser where
+module Language.Avaleryar.Parser
+  ( -- * Parsers
+    parseFile
+  , parseText
+    -- * Quasiquoters
+  , qry
+  , fct
+  , rls
+  ) where
 
 import           Control.Monad              (void)
 import           Control.Monad.Reader
@@ -59,7 +67,7 @@ sym = lexeme (T.pack <$> go) <?> "symbol"
 value :: Parser Value
 value =     I <$> L.signed (pure ()) L.decimal
         <|> T <$> stringLiteral
-        <|> T <$> (T.pack <$> some (alphaNumChar <|> symbolChar)) -- unquoted symbols
+        <|> T <$> sym -- unquoted symbols
         <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
 
 ident :: Parser Text
@@ -100,15 +108,13 @@ parseFile path modAssn = do
   let assn = fromString . maybe dropExtension ($) modAssn $ path
   file <- T.readFile path
   pure . first errorBundlePretty $ parse (runReaderT ruleFile (ParserSettings assn)) path file
-  
-  
 
-testParse :: Text -> Text -> Either String [Rule RawVar]
-testParse assn = first errorBundlePretty . parse go (T.unpack assn)
+parseText :: Text -> Text -> Either String [Rule RawVar]
+parseText assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT ruleFile (ParserSettings $ T assn)
 
 testParseFile :: FilePath -> IO (Either String [Rule RawVar])
-testParseFile file = T.readFile file >>= pure . testParse (T.pack file)
+testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
 
 rulesQQParser :: String -> Either String [Rule RawVar]
 rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
@@ -123,8 +129,8 @@ factQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where go = runReaderT (ws *> fmap (fmap $ error "variable in fact") lit) (ParserSettings "qq")
 
 
-rulesqq :: QuasiQuoter
-rulesqq = qqLiteral rulesQQParser 'rulesQQParser
+rls :: QuasiQuoter
+rls = qqLiteral rulesQQParser 'rulesQQParser
 
 qry :: QuasiQuoter
 qry = qqLiteral queryQQParser 'queryQQParser

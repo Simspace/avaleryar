@@ -41,3 +41,6 @@ instance Pretty Value where
 
 instance Pretty RawVar where
   pretty = pretty . unRawVar
+
+putQuery :: Lit TextVar -> IO ()
+putQuery = putDoc . pretty
