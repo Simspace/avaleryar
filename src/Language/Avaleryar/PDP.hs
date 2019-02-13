@@ -14,16 +14,14 @@ import           Control.Monad.State
 import           Data.Bifunctor               (first)
 import           Data.Coerce
 import           Data.Map                     (Map)
-import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
-import           Data.Void                    (vacuous)
 import           System.FilePath              (dropExtension)
 import           Text.PrettyPrint.Leijen.Text (pretty, putDoc)
 
 import Language.Avaleryar.ModeCheck     (modeCheck)
-import Language.Avaleryar.Parser        (fct, parseFile, qry)
-import Language.Avaleryar.PrettyPrinter
+import Language.Avaleryar.Parser        (parseFile, qry)
+import Language.Avaleryar.PrettyPrinter ()
 import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 

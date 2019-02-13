@@ -13,7 +13,6 @@ import Language.Avaleryar.Syntax
 import Fixtures
 
 import Test.Hspec
-import Test.QuickCheck
 
 spec :: Spec
 spec = do

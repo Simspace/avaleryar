@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -w #-}
+
 {-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
