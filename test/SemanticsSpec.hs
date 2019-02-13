@@ -1,40 +1,43 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE TypeApplications  #-}
 
 module SemanticsSpec where
 
-import Data.Foldable
-import System.FilePath
-import System.Timeout
+import Control.Monad
 
 import Language.Avaleryar.Parser
 import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 
-import Test.Hspec
+import Fixtures
 
-shouldSucceed, shouldFail :: (HasCallStack, Show a) => IO [a] -> Expectation
-shouldSucceed io = io >>= (`shouldNotSatisfy` null)
-shouldFail    io = io >>= (`shouldSatisfy`    null)
+import Test.Hspec
+import Test.QuickCheck
 
 spec :: Spec
 spec = do
   describe "infinite loops" $ do
-    it "doesn't run forever" $ do
+    it "don't run forever" $ do
       let go = runAvalaryarT 5000 1 testDb q
           q  = query "system" "loop" [Var "x"]
       timeoutSecs 1 go `shouldReturn` Just []
 
-    it "demonstrates fair conjunction" $ do
-      answers <- queryFile (exampleDir </> "fair-conjunction.ava") [qry| a(?x) |]
+    it "have limited output" $ do
+      Just answers <- timeoutSecs 1 $ runAvalaryarT 5000 10 testDb (msum . replicate 74 $ pure ())
+      length answers `shouldBe` 10
+
+    it "demonstrate fair conjunction" $ do
+      answers <- queryFile (exampleFile "fair-conjunction.ava") [qry| a(?x) |]
       answers `shouldNotSatisfy` null
 
-    it "demonstrates fair disjunction" $ do
-      answers <- queryFile (exampleDir </> "fair-disjunction.ava") [qry| a(?x) |]
+    it "demonstrate fair disjunction" $ do
+      answers <- queryFile (exampleFile "fair-disjunction.ava") [qry| a(?x) |]
       answers `shouldNotSatisfy` null
 
+    -- TODO: This is slow for some reason, to the tune of 2 seconds in ghcid
     it "finds paths" $ do
-      let go = queryFile (exampleDir </> "path.ava")
+      let go = queryFile (exampleFile "path.ava")
 
       -- verbose for errors with line numbers
       shouldSucceed $ go [qry| path(1, 2) |]
@@ -59,28 +62,48 @@ spec = do
       shouldFail    $ go [qry| path(5, 2) |]
       shouldFail    $ go [qry| path(5, 3) |]
 
-exampleDir :: FilePath
-exampleDir = "test/examples"
+  describe "native predicate typeclass wizardry" $ do
+    it "works on bool-valued functions on Value" $ do
+      shouldSucceed $ queryRules [qry| baz(a) |]
+                                 [rls| foo(a).
+                                       bar(b).
+                                       baz(?x) :-
+                                          foo(?x),
+                                          bar(?y),
+                                          :prim says not=(?x, ?y). |]
 
-testRulesDb :: RulesDb IO
-testRulesDb = insertRuleAssertion "system" rm mempty
-  where rm = compileRules . fmap (fmap unRawVar) $ [rls| loop(?x) :- loop(?x). |]
+    it "works on bool-valued functions on Valuable" $ do
+      shouldSucceed $ queryRules [qry| baz(?x) |]
+                                 [rls| foo(2).
+                                       baz(?x) :-
+                                         foo(?x),
+                                         :prim says even(?x). |]
 
-testNativeDb :: NativeDb IO
-testNativeDb = mempty
+    it "works on Valuable-valued functions" $ do
+      shouldSucceed $ queryRules [qry| palindrome(bob) |]
+                                 [rls| palindrome(?x) :- :prim says rev(?x, ?x). |]
 
-testDb :: Db IO
-testDb = Db testRulesDb testNativeDb
+      shouldFail    $ queryRules [qry| palindrome(alice) |]
+                                 [rls| palindrome(?x) :- :prim says rev(?x, ?x). |]
 
-timeoutSecs :: Int -> IO a -> IO (Maybe a)
-timeoutSecs n = timeout $ n * 10 ^ 6
+    it "turns lists into multiple successes" $ do
+      answers <- queryRules [qry| bar(?rows) |]
+                           [rls| foo("a\nb\nc").
+                                 bar(?rows) :- foo(?text),
+                                 :prim says lines(?text, ?rows). |]
+      answers `shouldMatchList` [ Lit (Pred "bar" 1) [Val "a"]
+                                , Lit (Pred "bar" 1) [Val "b"]
+                                , Lit (Pred "bar" 1) [Val "c"] ]
 
-queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO [Lit EVar]
-queryFile p q = do
-  Right rs <- parseFile p (Just $ const "system")
-  let rdb = insertRuleAssertion "system" rm mempty
-      rm  = compileRules . fmap (fmap unRawVar) $ rs
-      go  = runAvalaryarT 500 10 (Db rdb testNativeDb) $ query' "system" q
+    it "works on IO computations" $ do
+      shouldSucceed $ queryRules [qry| time(?t) |]
+                                 [rls| time(?t) :- :prim says cpu-time(?t). |]
+      shouldFail    $ queryRules [qry| time(0)  |] -- presumably the cpu time is nonzero
+                                 [rls| time(?t) :- :prim says cpu-time(?t). |]
 
-  Just res <- timeoutSecs 5 go
-  pure res
+
+    it "works on all the things (Int -> IO [(Int, Bool)])" $ do
+      answers <- queryRules [qry| go(?b, ?x, 5) |]
+                           [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
+      length answers `shouldBe` 5
+

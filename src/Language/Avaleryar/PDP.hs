@@ -131,15 +131,6 @@ testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
 insertApplicationAssertion = insertRuleAssertion "application" . compileRules . fmap factToRule
 
-mkNativePred :: (ToNative a, MonadIO m) => Text -> a -> NativePred m
-mkNativePred pn f = NativePred np moded
-  where np (Lit _ args) = toNative f args
-        modes = inferMode f
-        moded = Lit (Pred pn $ length modes) (Var <$> modes)
-
-mkNativeDb :: Monad m => Text -> [NativePred m] -> NativeDb m
-mkNativeDb assn preds = NativeDb . Map.singleton assn $ Map.fromList [(p, np) | np@(NativePred _ (Lit p _)) <- preds]
-
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds
   where preds = [ mkNativePred "not=" $ (/=) @Value

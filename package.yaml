@@ -30,3 +30,4 @@ tests:
       - QuickCheck
       - directory
       - filepath
+      - text

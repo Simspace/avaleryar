@@ -10,10 +10,11 @@ import Data.String
 import Data.Text   (Text)
 import Data.Void
 
-data Value = I Int
-           | T Text
-           | B Bool
-             deriving (Eq, Ord, Read, Show)
+data Value
+  = I Int
+  | T Text
+  | B Bool
+    deriving (Eq, Ord, Read, Show)
 
 instance IsString Value where
   fromString = T . fromString
@@ -65,6 +66,7 @@ instance Valuable Text where
   toValue = T
   fromValue (T a) = Just a
   fromValue _     = Nothing
+
 instance Valuable Int  where
   toValue = I
   fromValue (I a) = Just a

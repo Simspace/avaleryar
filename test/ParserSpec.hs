@@ -12,6 +12,8 @@ import System.FilePath
 import Language.Avaleryar.Parser
 import Language.Avaleryar.Syntax
 
+import Fixtures
+
 import Test.Hspec
 
 spec :: Spec
@@ -35,10 +37,9 @@ spec = do
          `shouldBe` [ ruleA, ruleB, ruleC ]
 
   describe "file parser" $ do
-    let exampleDir = "test/examples"
     it "parses examples" $ do
       files <- filter ((== ".ava") . takeExtension) <$> listDirectory exampleDir
       when (null files) $ expectationFailure ("no .ava files in example directory: " <> exampleDir)
       for_ files $ \file -> do
-         parsed <- parseFile (exampleDir </> file) Nothing
+         parsed <- parseFile (exampleFile file) Nothing
          parsed `shouldSatisfy` isRight

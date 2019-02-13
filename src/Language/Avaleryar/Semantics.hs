@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -163,39 +164,39 @@ outMode = Out "-"
 
 class ToNative a where
   toNative :: MonadIO m => a -> [Term EVar] -> AvaleryarT m ()
-  inferMode :: a -> [Mode TextVar]
+  inferMode :: [Mode TextVar]
 
-inferMode1 :: forall a proxy. ToNative a => proxy a -> [Mode TextVar]
-inferMode1 _ = inferMode @a undefined
+-- inferMode1 :: forall a proxy. ToNative a => proxy a -> [Mode TextVar]
+-- inferMode1 _ = inferMode @a undefined
 
 
 instance ToNative () where
   toNative () [] = pure ()
   toNative () _  = empty
-  inferMode ()   = []
+  inferMode     = []
 
 -- TODO: This is either slick or extremely hokey, figure out which.
 instance ToNative Bool where
   toNative b [] = guard b
   toNative _ _  = empty
-  inferMode _   = []
+  inferMode     = []
 
 -- TODO: This is also either slick or extremely hokey, figure out which.
 instance ToNative a => ToNative [a] where
   toNative as xs = msum [toNative a xs | a <- as]
-  inferMode      = inferMode1 
+  inferMode      = inferMode @a
 
 instance Valuable a => ToNative (Solely a) where
   toNative (Solely a) args = unifyArgs [val a] args
-  inferMode _ = [outMode]
+  inferMode = [outMode]
 
 instance (Valuable a, Valuable b) => ToNative (a, b) where
   toNative (a, b) args = unifyArgs [val a, val b] args
-  inferMode _ = [outMode, outMode]
+  inferMode = [outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c) => ToNative (a, b, c) where
   toNative (a, b, c) args = unifyArgs [val a, val b, val c] args
-  inferMode _ = [outMode, outMode, outMode]
+  inferMode = [outMode, outMode, outMode]
 
 instance (Valuable a, ToNative b) => ToNative (a -> b) where
   toNative f (x:xs) = do
@@ -204,11 +205,20 @@ instance (Valuable a, ToNative b) => ToNative (a -> b) where
       Just a  -> toNative (f a) xs
       Nothing -> empty
   toNative _ _      = empty
-  inferMode f = inMode : inferMode (f undefined)
+  inferMode = inMode : inferMode @b
 
 instance ToNative a => ToNative (IO a) where
   toNative ma xs = do
     a <- liftIO ma
     toNative a xs
 
-  inferMode ma = inferMode1 ma
+  inferMode = inferMode @a
+
+mkNativePred :: forall a m. (ToNative a, MonadIO m) => Text -> a -> NativePred m
+mkNativePred pn f = NativePred np moded
+  where np (Lit _ args) = toNative f args
+        modes = inferMode @a
+        moded = Lit (Pred pn $ length modes) (Var <$> modes)
+
+mkNativeDb :: Monad m => Text -> [NativePred m] -> NativeDb m
+mkNativeDb assn preds = NativeDb . Map.singleton assn $ Map.fromList [(p, np) | np@(NativePred _ (Lit p _)) <- preds]
