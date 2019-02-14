@@ -15,24 +15,28 @@ import           Data.Text            (Text, pack)
 
 import Language.Avaleryar.Syntax
 
-data Instantiation = Free | Ground
-  deriving (Eq, Ord, Read, Show)
-
 data ModeEnv = ModeEnv
   { nativeModes  :: Map Text (Map Pred ModedLit)
   , groundedVars :: [TextVar] }
 
 -- TODO: Actually use this type; try pushing mode checking through parsing for pretty errors?
-data ModeError = UnboundNativeAssertion Text
-               | UnboundNativePredicate Text Pred
-               | FVModeRestricted TextVar TextVar -- first var is the free one; TODO: Suck less
-               | FVInAssertionPosition TextVar
-               | FVInRuleHead TextVar
-                 deriving (Eq, Ord, Read, Show)
+data ModeError
+  = UnboundNativeAssertion Text
+  | UnboundNativePredicate Text Pred
+  | FVModeRestricted TextVar TextVar -- first var is the free one; TODO: Suck less
+  | FVInAssertionPosition TextVar
+  | FVInRuleHead TextVar
+    deriving (Eq, Ord, Read, Show)
 
 newtype ModeCheck m a = ModeCheck { unModeCheck :: ExceptT Text (StateT ModeEnv m) a }
   deriving (Functor, Applicative, Monad, MonadError Text)
 
+
+-- | I think I thought I needed this to make it look like we always just pulled the mode of a body
+-- literal and checked it directly.  But now it's dead code.  Leaving it here briefly just in case
+-- I'm missing something.
+
+{-
 getMode :: Monad m => BodyLit TextVar -> ModeCheck m ModedLit
 getMode (ARTerm _ `Says` lit) = pure . fmap Out $ lit
 getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
@@ -41,6 +45,7 @@ getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
       missingPredicate = "Unbound native predicate: '" <> displayPred p <> "' in assertion '" <> assn <> "'"
   pmap <- maybe (throwError missingAssertion) pure $ Map.lookup assn amap
   maybe (throwError missingPredicate) pure $ Map.lookup p pmap
+-}
 
 getNativeMode :: Monad m => Text -> Pred -> ModeCheck m ModedLit
 getNativeMode assn p = ModeCheck $ do
@@ -74,8 +79,8 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
           traverse_ ground bas
 
 
-        modeCheckArg (Val _)       a       = ground a -- treat constants like in-mode variables
-        modeCheckArg (Var (Out  _)) a       = ground a -- predicates ground in-mode variables
+        modeCheckArg (Val _)        a     = ground a -- treat constants like in-mode variables
+        modeCheckArg (Var (Out  _)) a     = ground a -- predicates ground in-mode variables
         modeCheckArg (Var (In _)) (Val _) = pure ()
         modeCheckArg (Var (In o)) (Var v) = do
           let modeMismatch = "variable '" <> v <> "' is free in mode-restricted position: '" <> o <> "'"
@@ -89,6 +94,3 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
 
 modeCheck :: (Foldable t) => Map Text (Map Pred ModedLit) -> t (Rule TextVar) -> Either Text ()
 modeCheck native = traverse_ $ flip evalState (ModeEnv native mempty) . runExceptT . unModeCheck . modeCheckRule
-
-modeCheck' :: (Foldable t) => t (Rule TextVar) -> Either Text ()
-modeCheck' = modeCheck mempty

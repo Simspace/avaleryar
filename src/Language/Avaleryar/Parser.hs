@@ -44,8 +44,7 @@ lexeme = L.lexeme ws
 symbol :: Text -> Parser Text
 symbol = L.symbol ws
 
-semi, colon, comma, dot :: Parser ()
-semi  = void $ symbol ";"
+colon, comma, dot :: Parser ()
 colon = void $ symbol ":"
 comma = void $ symbol ","
 dot   = void $ symbol "."

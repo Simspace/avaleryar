@@ -28,6 +28,7 @@ tests:
 
       - HUnit
       - QuickCheck
+      - containers
       - directory
       - filepath
       - text

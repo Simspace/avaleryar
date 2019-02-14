@@ -21,8 +21,14 @@ spec = do
 
   describe "quasiquoters" $ do
     it "parse queries" $ do
-      [qry| quasi-query(?var, symbol, "quoted string", #f, 5) |]
-         `shouldBe` Lit (Pred "quasi-query" 5) [Var "var", Val "symbol", Val "quoted string", Val (B False), Val (I 5)]
+      [qry| quasi-query(?var, symbol, "quoted string", #f, 5, #t, -7) |]
+         `shouldBe` Lit (Pred "quasi-query" 7) [ Var "var"
+                                               , Val "symbol"
+                                               , Val "quoted string"
+                                               , Val (B False)
+                                               , Val (I 5)
+                                               , Val (B True)
+                                               , Val (I (-7))]
 
     it "parse facts" $ do
       [fct| fact(symbol) |] `shouldBe` Lit (Pred "fact" 1) [Val "symbol"]
@@ -35,6 +41,7 @@ spec = do
                                                     , ARNative "nat" `Says` Lit (Pred "b" 1) [Var "y"] ]
       [rls| a(?x) :- b(?x). b(?x) :- c(?y), a(?x). c(?y) :- t says a(?x, ?y), :nat says b(?y). |]
          `shouldBe` [ ruleA, ruleB, ruleC ]
+
 
   describe "file parser" $ do
     it "parses examples" $ do

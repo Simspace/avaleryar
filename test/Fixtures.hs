@@ -1,16 +1,19 @@
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE TypeApplications  #-}
+
 module Fixtures where
 
-import Control.Monad
-import qualified Data.Text as T
-import System.CPUTime
-import System.FilePath
-import System.Timeout
+import           Control.Monad
+import           Data.Map        (Map)
+import           Data.Text       (Text)
+import qualified Data.Text       as T
+import           System.CPUTime
+import           System.FilePath
+import           System.Timeout
 
-import Language.Avaleryar.Semantics
 import Language.Avaleryar.Parser
+import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 
 import Test.Hspec
@@ -44,6 +47,9 @@ testNativeDb = mkNativeDb "prim" preds
 
         cpuTime :: IO (Solely Int)
         cpuTime = Solely . fromInteger <$> getCPUTime
+
+testNativeModes :: Map Text (Map Pred ModedLit)
+testNativeModes = fmap (fmap nativeSig) . unNativeDb $ testNativeDb
 
 testDb :: Db IO
 testDb = Db testRulesDb testNativeDb
