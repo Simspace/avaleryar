@@ -166,10 +166,6 @@ class ToNative a where
   toNative :: MonadIO m => a -> [Term EVar] -> AvaleryarT m ()
   inferMode :: [Mode TextVar]
 
--- inferMode1 :: forall a proxy. ToNative a => proxy a -> [Mode TextVar]
--- inferMode1 _ = inferMode @a undefined
-
-
 instance ToNative () where
   toNative () [] = pure ()
   toNative () _  = empty
@@ -197,6 +193,18 @@ instance (Valuable a, Valuable b) => ToNative (a, b) where
 instance (Valuable a, Valuable b, Valuable c) => ToNative (a, b, c) where
   toNative (a, b, c) args = unifyArgs [val a, val b, val c] args
   inferMode = [outMode, outMode, outMode]
+
+instance (Valuable a, Valuable b, Valuable c, Valuable d) => ToNative (a, b, c, d) where
+  toNative (a, b, c, d) args = unifyArgs [val a, val b, val c, val d] args
+  inferMode = [outMode, outMode, outMode, outMode]
+
+instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e) => ToNative (a, b, c, d, e) where
+  toNative (a, b, c, d, e) args = unifyArgs [val a, val b, val c, val d, val e] args
+  inferMode = [outMode, outMode, outMode, outMode, outMode]
+
+instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e, Valuable f) => ToNative (a, b, c, d, e, f) where
+  toNative (a, b, c, d, e, f) args = unifyArgs [val a, val b, val c, val d, val e, val f] args
+  inferMode = [outMode, outMode, outMode, outMode, outMode, outMode]
 
 instance (Valuable a, ToNative b) => ToNative (a -> b) where
   toNative f (x:xs) = do
