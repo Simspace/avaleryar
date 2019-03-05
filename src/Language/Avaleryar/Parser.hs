@@ -5,6 +5,8 @@
 module Language.Avaleryar.Parser
   ( -- * Parsers
     parseFile
+  , parseFactFile
+  , parseFacts
   , parseQuery
   , parseText
     -- * Quasiquoters
@@ -85,6 +87,13 @@ lit = label "literal" $ do
   args <- parens (term `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
+-- | A specialized version of 'lit' that fails faster for facts.
+fact :: Parser Fact
+fact = label "fact" $ do
+  ftor <- ident
+  args <- fmap Val <$> parens (value `sepBy` comma)
+  pure $ Lit (Pred ftor (length args)) args
+
 aref :: Parser (ARef RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
@@ -103,11 +112,22 @@ rule = Rule <$> lit <*> (body <|> dot *> pure [])
 ruleFile :: Parser [Rule RawVar]
 ruleFile = ws *> many rule
 
+factFile :: Parser [Fact]
+factFile = ws *> many fact
+
 parseFile :: FilePath -> Maybe (FilePath -> String) -> IO (Either String [Rule RawVar])
 parseFile path modAssn = do
   let assn = fromString . maybe dropExtension ($) modAssn $ path
   file <- T.readFile path
   pure . first errorBundlePretty $ parse (runReaderT ruleFile (ParserSettings assn)) path file
+
+parseFactFile :: FilePath -> IO (Either String [Fact])
+parseFactFile path = do
+  file <- T.readFile path
+  pure . first errorBundlePretty $ parse (runReaderT factFile (ParserSettings "application")) path file
+
+parseFacts :: Text -> Either String [Fact]
+parseFacts src = first errorBundlePretty $ parse (runReaderT factFile (ParserSettings "application")) "" src
 
 parseText :: Text -> Text -> Either String [Rule RawVar]
 parseText assn = first errorBundlePretty . parse go (T.unpack assn)

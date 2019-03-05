@@ -1,12 +1,17 @@
-{-# LANGUAGE FlexibleContexts  #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeApplications     #-}
 
 module Language.Avaleryar.PrettyPrinter where
 
 import           Data.Char                    (isSpace)
+import qualified Data.Map                     as Map
+import           Data.Foldable
 import qualified Data.Text                    as T
 import           Text.PrettyPrint.Leijen.Text
 
+import Language.Avaleryar.Semantics (RulesDb(..))
 import Language.Avaleryar.Syntax
 
 instance Pretty Pred where
@@ -44,3 +49,21 @@ instance Pretty RawVar where
 
 putQuery :: Lit TextVar -> IO ()
 putQuery = putDoc . pretty
+
+putFacts :: [Fact] -> IO ()
+putFacts = traverse_ (putDoc . pretty . factToRule @TextVar)
+
+putRulesDb :: RulesDb m -> IO ()
+putRulesDb = putDoc . pretty
+
+putAssertion :: Value -> [Pred] -> IO ()
+putAssertion assn ps = putDoc $ prettyAssertion assn ps
+
+prettyAssertion :: Value -> [Pred] -> Doc
+prettyAssertion assn ps = pretty assn
+                       <> ": "
+                       <> group (nest 2 (line <> (vsep . fmap pretty $ ps)))
+
+instance Pretty (RulesDb m) where
+  pretty (RulesDb as) = vsep . fmap go $ Map.toList as
+    where go (assn, pm) = prettyAssertion assn $ Map.keys pm

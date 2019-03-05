@@ -14,13 +14,11 @@ import           Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.Fail
 import           Control.Monad.State
-import           Data.Bool
 import           Data.Foldable
 import           Data.Map             (Map)
 import qualified Data.Map             as Map
 import           Data.String
-import           Data.Text            (Text, pack, unpack)
-import           Data.Void            (Void)
+import           Data.Text            (Text, pack)
 
 import Control.Monad.FBackTrackT
 
@@ -95,7 +93,7 @@ unifyTerm t t' = do
       _          -> empty -- ts /= ts', both are values
 
 subst :: Monad m => Term EVar -> AvaleryarT m (Term EVar)
-subst val@(Val _)  = pure val
+subst v@(Val _)    = pure v
 subst var@(Var ev) = gets env >>= maybe (pure var) subst . Map.lookup ev
 
 type Goal = BodyLit EVar
@@ -151,6 +149,9 @@ query' assn (Lit (Pred p _) args) = query assn p args
 
 insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
 insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
+
+retractRuleAssertion :: Text -> RulesDb m -> RulesDb m
+retractRuleAssertion assn = RulesDb . Map.delete (T assn) . unRulesDb
 
 ---------------------
 

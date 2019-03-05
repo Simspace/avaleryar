@@ -26,6 +26,14 @@ import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 
 
+-- maybe do this
+class Monad m => MonadPDP m where
+  cunsafeSubmitAssertion :: Text -> [Rule TextVar] -> m (Either PDPError ())
+  cretractAssertion      :: Text -> m ()
+  crunQuery              :: [Fact] -> Text -> [Term TextVar] -> m [Fact]
+  ccheckQuery            :: [Fact] -> Text -> [Term TextVar] -> m Bool
+  ccheckQuery fs assn q  = null <$> crunQuery fs assn q
+
 data PDPConfig m = PDPConfig
   { systemAssertion  :: Map Pred (Lit EVar -> AvaleryarT m ()) -- ^ can't change system assertion at runtime
   , nativeAssertions :: NativeDb m -- ^ Needs to be in the reader so changes induce a new mode-check on rules
@@ -95,7 +103,6 @@ submitFile :: MonadIO m => FilePath -> [Fact] -> PDP m ()
 submitFile path facts = checkSubmit facts >> unsafeSubmitFile path
 
 -- | unsafe because there's no authz on the submission
--- TODO: make a safe version
 unsafeSubmitAssertion :: Monad m => Text -> [Rule TextVar] -> PDP m ()
 unsafeSubmitAssertion assn rules = do
   checkRules rules
@@ -107,6 +114,9 @@ unsafeSubmitFile path = do
   let munge = dropExtension
   rules <- liftIO $ parseFile path (Just munge)
   unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
+
+retractAssertion :: Monad m => Text -> PDP m ()
+retractAssertion = modifyRulesDb . retractRuleAssertion
 
 runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m [Fact]
 runQuery facts p args  = do
@@ -165,4 +175,3 @@ modifyRulesDb f = PDP $ modify f
 
 putRulesDb :: Monad m => RulesDb m -> PDP m ()
 putRulesDb ndb = modifyRulesDb (const ndb)
-
