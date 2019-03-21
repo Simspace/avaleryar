@@ -87,11 +87,13 @@ lit = label "literal" $ do
   args <- parens (term `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
--- | A specialized version of 'lit' that fails faster for facts.
+-- | A specialized version of 'lit' that fails faster for facts.  Like 'rule' and unlike 'lit',
+-- parses a trailing 'dot'.
 fact :: Parser Fact
 fact = label "fact" $ do
   ftor <- ident
   args <- fmap Val <$> parens (value `sepBy` comma)
+  dot
   pure $ Lit (Pred ftor (length args)) args
 
 aref :: Parser (ARef RawVar)
@@ -133,8 +135,8 @@ parseText :: Text -> Text -> Either String [Rule RawVar]
 parseText assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT ruleFile (ParserSettings $ T assn)
 
-parseQuery :: Text -> Either String (Lit TextVar)
-parseQuery = first errorBundlePretty . parse go "qq"
+parseQuery :: Text -> Text -> Either String (Lit TextVar)
+parseQuery assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
 
 testParseFile :: FilePath -> IO (Either String [Rule RawVar])
