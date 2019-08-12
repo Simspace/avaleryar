@@ -44,6 +44,9 @@ submitFile h path facts = modifyWithPDPHandle h $ PDP.submitFile path facts
 runQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError [Fact])
 runQuery h facts p args = withPDPHandle h $ PDP.runQuery facts p args
 
+checkQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError Bool)
+checkQuery h facts p args = runQuery h facts p args >>= pure . fmap null 
+
 dumpDb :: PDPHandle -> IO (Map Value [Pred])
 dumpDb (PDPHandle PDPConfig {..} mv) = do
   RulesDb rdb <- insertRuleAssertion "system" systemAssertion <$> readMVar mv

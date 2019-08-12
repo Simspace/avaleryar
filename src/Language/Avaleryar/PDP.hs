@@ -83,6 +83,7 @@ runAvaWith f ma = do
   -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
   rdb            <- insertRuleAssertion "system" systemAssertion . f <$> getRulesDb
   lift $ runAvalaryarT maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
+                                             -- ^ is this exactly what I just said not to do?
 
 checkRules :: Monad m => [Rule TextVar] -> PDP m ()
 checkRules rules = do
