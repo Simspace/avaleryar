@@ -1,5 +1,7 @@
 resolver: lts-13.19
 packages:
   - ./core
+  - ./extras
 extra-deps:
   - qq-literals-0.1.0.0
+  - jsonpath-0.1.0.1
