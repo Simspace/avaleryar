@@ -2,7 +2,9 @@
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
 {-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 module Language.Avaleryar.Syntax where
 
 import Data.Map    (Map)
@@ -83,3 +85,7 @@ val = Val . toValue
 class Factual a where
   toFact :: a -> Fact
   fromFact :: Fact -> Maybe a
+
+instance Factual Fact where
+  toFact = id
+  fromFact = Just

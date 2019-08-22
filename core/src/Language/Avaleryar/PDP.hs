@@ -140,6 +140,17 @@ testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
 insertApplicationAssertion = insertRuleAssertion "application" . compileRules . fmap factToRule
 
+nativeModes :: NativeDb m -> Map Text (Map Pred ModedLit)
+nativeModes = fmap (fmap nativeSig) . unNativeDb 
+
+-- NB: The given file is parsed as the @system@ assertion regardless of its filename, which is
+-- almost guaranteed to be what you want.
+pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
+pdpConfig db fp = runExceptT $ do
+  sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp (Just $ const "system")
+  ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
+  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds
   where preds = [ mkNativePred "not=" $ (/=) @Value
@@ -149,12 +160,9 @@ demoNativeDb = mkNativeDb "base" preds
                 , mkNativePred "cat"  $ fmap (Solely . pack) . readFile . T.unpack
                 , mkNativePred "lines" $ fmap Solely . T.lines]
 
-demo :: IO (Either PDPError (PDPConfig IO))
-demo = runExceptT $ do
-  let modes = fmap (fmap nativeSig) $ unNativeDb (demoNativeDb :: NativeDb IO)
-  sys <- ExceptT . fmap (first ParseError . coerce) $ parseFile "system.ava" (Just dropExtension)
-  ExceptT . pure . first ModeError $ modeCheck modes sys
-  pure $ PDPConfig (compileRules sys) demoNativeDb (Just [qry| may(submit) |]) 50 10
+demoConfig :: IO (Either PDPError (PDPConfig IO))
+demoConfig = fmap addSubmit <$> pdpConfig demoNativeDb "system.ava"
+  where addSubmit conf = conf { submitQuery = Just [qry| may(submit) |]}
 
 -- Everyone: Alec, why not just use lenses?
 -- Me: ... what's that over there!? ... ::smokebomb::

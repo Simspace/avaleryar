@@ -27,7 +27,7 @@ import           Text.PrettyPrint.Leijen.Text (Pretty, pretty)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Language.Avaleryar.Parser
-import Language.Avaleryar.PDP           (demo)
+import Language.Avaleryar.PDP           (demoConfig)
 import Language.Avaleryar.PDP.Handle
 import Language.Avaleryar.PrettyPrinter
 import Language.Avaleryar.Syntax
@@ -125,6 +125,6 @@ commandChar = Just ':'
 
 main :: IO ()
 main = do
-  Right conf <- demo
+  Right conf <- demoConfig
   handle <- newHandle conf
   flip runReaderT handle $ evalRepl banner cmd options commandChar (Prefix (wordCompleter byWord) commandMatcher) ini

@@ -19,6 +19,7 @@ import           Data.Map             (Map)
 import qualified Data.Map             as Map
 import           Data.String
 import           Data.Text            (Text, pack)
+import           Data.Void            (vacuous)
 
 import Control.Monad.FBackTrackT
 
@@ -167,6 +168,16 @@ class ToNative a where
   toNative :: MonadIO m => a -> [Term EVar] -> AvaleryarT m ()
   inferMode :: [Mode TextVar]
 
+instance ToNative Value where
+  toNative v args = unifyArgs [val v] args
+  inferMode = [outMode]
+
+-- TODO: Figure out if there's a reason I didn't do:
+--
+-- instance Valuable a => ToNative a where
+--   toNative v args = toNative (toValue a) args
+--   inferMode = [outMode]
+
 instance ToNative () where
   toNative () [] = pure ()
   toNative () _  = empty
@@ -182,6 +193,10 @@ instance ToNative Bool where
 instance ToNative a => ToNative [a] where
   toNative as xs = msum [toNative a xs | a <- as]
   inferMode      = inferMode @a
+
+instance ToNative a => ToNative (Maybe a) where
+  toNative ma xs = toNative (toList ma) xs
+  inferMode      = inferMode @[a]
 
 instance Valuable a => ToNative (Solely a) where
   toNative (Solely a) args = unifyArgs [val a] args
@@ -228,6 +243,12 @@ mkNativePred pn f = NativePred np moded
   where np (Lit _ args) = toNative f args
         modes = inferMode @a
         moded = Lit (Pred pn $ length modes) (Var <$> modes)
+
+-- TODO: Feels like I should be able to do this less manually, maybe?
+mkNativeFact :: (Factual a, MonadIO m) => a -> NativePred m
+mkNativeFact a = NativePred np $ fmap Out f
+  where f@(Lit _ args)   = vacuous $ toFact a
+        np (Lit _ args') = unifyArgs args args'
 
 mkNativeDb :: Monad m => Text -> [NativePred m] -> NativeDb m
 mkNativeDb assn preds = NativeDb . Map.singleton assn $ Map.fromList [(p, np) | np@(NativePred _ (Lit p _)) <- preds]
