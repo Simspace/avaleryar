@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
-module Main where
+module Language.Avaleryar.Repl where
 
 import           Control.Applicative
 import           Control.Monad.Reader

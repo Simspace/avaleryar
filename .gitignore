@@ -1,3 +1,5 @@
 .stack-work
-avaleryar.cabal
+*.cabal
+*.tix
+*.ava
 .history

@@ -1,0 +1,25 @@
+name: avaleryar-repl
+
+library:
+  source-dirs: src
+  dependencies:
+    - base
+    - avaleryar
+    - avaleryar-extras
+
+    - containers
+    - haskeline
+    - mtl
+    - optparse-applicative
+    - read-editor
+    - repline
+    - text
+    - wl-pprint-text
+
+executables:
+  avai:
+    source-dirs: repl
+    main: avai.hs
+    dependencies:
+      - avaleryar-repl
+      - base

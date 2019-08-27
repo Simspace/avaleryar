@@ -15,23 +15,6 @@ library:
     - text
     - wl-pprint-text
 
-executables:
-  avai:
-    source-dirs: repl
-    main: avai.hs
-    dependencies:
-      - avaleryar
-      - base
-
-      - containers
-      - haskeline
-      - mtl
-      - optparse-applicative
-      - read-editor
-      - repline
-      - text
-      - wl-pprint-text
-
 tests:
   avaleryar-tests:
     main: Main.hs
