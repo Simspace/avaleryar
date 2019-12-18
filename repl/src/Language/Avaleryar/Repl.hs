@@ -82,7 +82,7 @@ dump assns = do
 app :: [String] -> Repl ()
 app _ = do
   currentFacts <- liftIO $ readIORef appFacts
-  let header = ";; facts written below will be added to the 'application' assertion"
+  let header = "\n\n;; facts written above will be added to the 'application' assertion"
       body   = unlines . fmap (prettyString @(Rule TextVar) . factToRule) $ currentFacts
 
   newSource <- liftIO $ readEditorWith (header <> "\n\n" <> body)
