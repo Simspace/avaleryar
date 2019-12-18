@@ -13,10 +13,11 @@ import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Bifunctor               (first)
 import           Data.Coerce
+import           Data.List                    (stripPrefix)
 import           Data.Map                     (Map)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
-import           System.FilePath              (dropExtension)
+import           System.FilePath              (stripExtension)
 import           Text.PrettyPrint.Leijen.Text (pretty, putDoc)
 
 import Language.Avaleryar.ModeCheck     (modeCheck)
@@ -38,6 +39,7 @@ data PDPConfig m = PDPConfig
   { systemAssertion  :: Map Pred (Lit EVar -> AvaleryarT m ()) -- ^ can't change system assertion at runtime
   , nativeAssertions :: NativeDb m -- ^ Needs to be in the reader so changes induce a new mode-check on rules
   , submitQuery      :: Maybe (Lit TextVar) -- ^ for authorizing assertion submissions
+  , mungeAssertion   :: FilePath -> FilePath -- ^ for turning filenames into assertion names
   , maxDepth         :: Int
   , maxAnswers       :: Int
   }
@@ -109,10 +111,11 @@ unsafeSubmitAssertion assn rules = do
   checkRules rules
   modifyRulesDb $ insertRuleAssertion assn (compileRules rules)
 
+
 -- | TODO: ergonomics, protect "system", etc.
 unsafeSubmitFile :: MonadIO m => FilePath -> PDP m ()
 unsafeSubmitFile path = do
-  let munge = dropExtension
+  munge <- asksConfig mungeAssertion
   rules <- liftIO $ parseFile path (Just munge)
   unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
 
@@ -141,15 +144,21 @@ insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
 insertApplicationAssertion = insertRuleAssertion "application" . compileRules . fmap factToRule
 
 nativeModes :: NativeDb m -> Map Text (Map Pred ModedLit)
-nativeModes = fmap (fmap nativeSig) . unNativeDb 
+nativeModes = fmap (fmap nativeSig) . unNativeDb
+
+stripDotAva :: FilePath -> FilePath
+stripDotAva path = maybe path id $ stripExtension "ava" path
+
+stripPathPrefix :: String -> FilePath -> FilePath
+stripPathPrefix pfx path = maybe path id $ stripPrefix pfx path
 
 -- NB: The given file is parsed as the @system@ assertion regardless of its filename, which is
 -- almost guaranteed to be what you want.
-pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
-pdpConfig db fp = runExceptT $ do
+pdpConfig :: MonadIO m => (FilePath -> FilePath) -> NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
+pdpConfig munge db fp = runExceptT $ do
   sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp (Just $ const "system")
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules sys) db Nothing (munge . stripDotAva) 50 10
 
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds
@@ -161,7 +170,7 @@ demoNativeDb = mkNativeDb "base" preds
                 , mkNativePred "lines" $ fmap Solely . T.lines]
 
 demoConfig :: IO (Either PDPError (PDPConfig IO))
-demoConfig = fmap addSubmit <$> pdpConfig demoNativeDb "system.ava"
+demoConfig = fmap addSubmit <$> pdpConfig id demoNativeDb "system.ava"
   where addSubmit conf = conf { submitQuery = Just [qry| may(submit) |]}
 
 -- Everyone: Alec, why not just use lenses?
