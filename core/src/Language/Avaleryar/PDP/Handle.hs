@@ -41,6 +41,9 @@ retractAssertion h = modifyWithPDPHandle h . PDP.retractAssertion
 submitFile :: PDPHandle -> FilePath -> [Fact] -> IO (Either PDPError ())
 submitFile h path facts = modifyWithPDPHandle h $ PDP.submitFile path facts
 
+unsafeSubmitFile :: PDPHandle -> FilePath -> IO (Either PDPError ())
+unsafeSubmitFile h path = modifyWithPDPHandle h $ PDP.unsafeSubmitFile path
+
 runQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError [Fact])
 runQuery h facts p args = withPDPHandle h $ PDP.runQuery facts p args
 
