@@ -147,8 +147,6 @@ val = Val . toValue
 -- | Some types may be interprected as a 'Fact'.
 class Factual a where
   toFact :: a -> Fact
-  fromFact :: Fact -> Maybe a
 
 instance Factual Fact where
   toFact = id
-  fromFact = Just
