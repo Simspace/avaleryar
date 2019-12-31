@@ -8,6 +8,7 @@
 
 module Language.Avaleryar.PDP where
 
+import           Control.Exception            (Exception)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State
@@ -17,6 +18,7 @@ import           Data.List                    (stripPrefix)
 import           Data.Map                     (Map)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
+import           Data.Typeable                (Typeable)
 import           System.FilePath              (stripExtension)
 import           Text.PrettyPrint.Leijen.Text (pretty, putDoc)
 
@@ -55,7 +57,9 @@ data PDPError
   | VarInQueryResults TextVar
   | ParseError String
   | SubmitError SubmitError
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Read, Show, Typeable)
+
+instance Exception PDPError
 
 data SubmitError
   = SubmissionDisabled
