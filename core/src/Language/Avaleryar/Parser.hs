@@ -30,7 +30,7 @@ import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-import Language.Avaleryar.Syntax
+import Language.Avaleryar.Syntax hiding (lit, fact)
 
 data ParserSettings = ParserSettings { currentAssertionName :: Value }
 
@@ -135,7 +135,7 @@ parseText :: Text -> Text -> Either String [Rule RawVar]
 parseText assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT ruleFile (ParserSettings $ T assn)
 
-parseQuery :: Text -> Text -> Either String (Lit TextVar)
+parseQuery :: Text -> Text -> Either String Query
 parseQuery assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
 
@@ -146,7 +146,7 @@ rulesQQParser :: String -> Either String [Rule RawVar]
 rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where go = runReaderT (ws *> many rule) (ParserSettings "qq")
 
-queryQQParser :: String -> Either String (Lit TextVar)
+queryQQParser :: String -> Either String Query
 queryQQParser = first errorBundlePretty . parse go "qq" . T.pack
   where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
 

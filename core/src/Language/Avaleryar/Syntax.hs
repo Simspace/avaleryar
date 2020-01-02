@@ -66,6 +66,10 @@ data Term v = Val Value | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable
 -- same as the length of the list of 'Term's in the argument list.
 data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
+-- | Convenience constructor for 'Lit's.
+lit :: Text -> [Term v] -> Lit v
+lit pn as = Lit (Pred pn (length as)) as
+
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
 data ARef v = ARNative Text | ARTerm (Term v) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
@@ -84,9 +88,14 @@ data Rule v = Rule (Lit v) [BodyLit v]
 -- represent them as 'Lit's with variables of type 'Void' to ensure they are facts by construction.
 type Fact = Lit Void
 
+-- | Convenience constructor for 'Fact's.  Works directly only 'Valuable's because the whole point
+-- is that there aren't any variables amongst the arguments.
+fact :: Valuable v => Text -> [v] -> Fact
+fact pn = lit pn . fmap val
+
 -- | 'Fact's are vacuously 'Rule's.
 factToRule :: Fact -> Rule v
-factToRule lit = Rule (vacuous lit) []
+factToRule fct = Rule (vacuous fct) []
 
 -- | To ensure freshness, tag runtime variables ('EVar's) with the current value of an 'Epoch'
 -- counter which we bump every time we allocate a new variable.
@@ -95,6 +104,12 @@ newtype Epoch = Epoch { getEpoch :: Int }
 
 -- | TODO: This should probably become a newtype
 type TextVar = Text
+
+type Query = Lit TextVar
+
+-- | Convenience constructor for 'Query's.
+query :: Text -> [Term TextVar] -> Query
+query = lit
 
 -- | At runtime, we unify on variables tagged with an 'Epoch' to help avoid undesirable variable capture.
 --

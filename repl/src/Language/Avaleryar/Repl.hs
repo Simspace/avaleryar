@@ -65,7 +65,7 @@ load :: [FilePath] -> Repl ()
 load paths = dontCrash $ do
   handle <- ask
   liftIO $ for_ paths $ \path -> do
-    submitted <- submitFile handle path []
+    submitted <- submitFile handle Nothing path []
     case submitted of
       Left err -> putStrLn $ path ++ ": " ++ show err
       Right () -> pure ()

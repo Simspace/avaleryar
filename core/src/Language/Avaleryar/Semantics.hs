@@ -188,9 +188,6 @@ loadResolver (ARTerm   t) p = do
 -- wrote this.
 resolve :: (Monad m) => Goal -> AvaleryarT m (Lit EVar)
 resolve (assn `Says` lit@(Lit p as)) = do
-  -- Val c <- subst assn
-  -- RT {..} <- get
-  -- resolver <- yield' $ (alookup c db >>= alookup p)
   resolver <- yield' $ loadResolver assn p
   resolver lit
   Lit p <$> traverse subst as
@@ -220,15 +217,15 @@ compilePred rules (Lit _ qas) = do
 compileRules :: (Monad m) => [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT m ())
 compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
-query :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
-query assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (-1,)) args))
+compileQuery :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
+compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (-1,)) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
 -- | TODO: Suck less
-query' :: Monad m => String -> Lit TextVar -> AvaleryarT m (Lit EVar)
-query' assn (Lit (Pred p _) args) = query assn p args
+compileQuery' :: Monad m => String -> Query -> AvaleryarT m (Lit EVar)
+compileQuery' assn (Lit (Pred p _) args) = compileQuery assn p args
 
 insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
 insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb

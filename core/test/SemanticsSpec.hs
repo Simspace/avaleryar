@@ -19,7 +19,7 @@ spec = do
   describe "infinite loops" $ do
     it "don't run forever" $ do
       let go = runAvalaryarT 5000 1 testDb q
-          q  = query "system" "loop" [Var "x"]
+          q  = compileQuery "system" "loop" [Var "x"]
       timeoutSecs 1 go `shouldReturn` Just []
 
     it "have limited output" $ do

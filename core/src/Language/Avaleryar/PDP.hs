@@ -23,25 +23,16 @@ import           System.FilePath              (stripExtension)
 import           Text.PrettyPrint.Leijen.Text (pretty, putDoc)
 
 import Language.Avaleryar.ModeCheck     (modeCheck)
-import Language.Avaleryar.Parser        (parseFile, qry)
+import Language.Avaleryar.Parser        (parseFile, parseText, qry)
 import Language.Avaleryar.PrettyPrinter ()
 import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 
 
--- maybe do this
-class Monad m => MonadPDP m where
-  cunsafeSubmitAssertion :: Text -> [Rule TextVar] -> m (Either PDPError ())
-  cretractAssertion      :: Text -> m ()
-  crunQuery              :: [Fact] -> Text -> [Term TextVar] -> m [Fact]
-  ccheckQuery            :: [Fact] -> Text -> [Term TextVar] -> m Bool
-  ccheckQuery fs assn q  = null <$> crunQuery fs assn q
-
 data PDPConfig m = PDPConfig
   { systemAssertion  :: Map Pred (Lit EVar -> AvaleryarT m ()) -- ^ can't change system assertion at runtime
   , nativeAssertions :: NativeDb m -- ^ Needs to be in the reader so changes induce a new mode-check on rules
-  , submitQuery      :: Maybe (Lit TextVar) -- ^ for authorizing assertion submissions
-  , mungeAssertion   :: FilePath -> FilePath -- ^ for turning filenames into assertion names
+  , submitQuery      :: Maybe Query -- ^ for authorizing assertion submissions
   , maxDepth         :: Int
   , maxAnswers       :: Int
   }
@@ -106,8 +97,11 @@ checkSubmit facts = asksConfig submitQuery >>= \case
 submitAssertion :: MonadIO m => Text -> [Rule TextVar] -> [Fact] -> PDP m ()
 submitAssertion assn rules facts = checkSubmit facts >> unsafeSubmitAssertion assn rules
 
-submitFile :: MonadIO m => FilePath -> [Fact] -> PDP m ()
-submitFile path facts = checkSubmit facts >> unsafeSubmitFile path
+submitText :: MonadIO m => Text -> Text -> [Fact] -> PDP m ()
+submitText assn text facts = checkSubmit facts >> unsafeSubmitText assn text
+
+submitFile :: MonadIO m => Maybe String -> FilePath -> [Fact] -> PDP m ()
+submitFile assn path facts = checkSubmit facts >> unsafeSubmitFile assn path
 
 -- | unsafe because there's no authz on the submission
 unsafeSubmitAssertion :: Monad m => Text -> [Rule TextVar] -> PDP m ()
@@ -117,22 +111,25 @@ unsafeSubmitAssertion assn rules = do
 
 
 -- | TODO: ergonomics, protect "system", etc.
-unsafeSubmitFile :: MonadIO m => FilePath -> PDP m ()
-unsafeSubmitFile path = do
-  munge <- asksConfig mungeAssertion
-  rules <- liftIO $ parseFile path (Just munge)
-  unsafeSubmitAssertion (pack $ munge path) =<< either (throwError . ParseError) (pure . coerce) rules
+unsafeSubmitFile :: MonadIO m => Maybe String -> FilePath -> PDP m ()
+unsafeSubmitFile assn path = do
+  rules <- liftIO $ parseFile path (const <$> assn)
+  unsafeSubmitAssertion (pack $ maybe (stripDotAva path) id assn) =<< either (throwError . ParseError) (pure . coerce) rules
+
+unsafeSubmitText :: MonadIO m => Text -> Text -> PDP m ()
+unsafeSubmitText assn text = unsafeSubmitAssertion assn =<< either (throwError . ParseError) (pure . coerce) rules
+  where rules = parseText assn text
 
 retractAssertion :: Monad m => Text -> PDP m ()
 retractAssertion = modifyRulesDb . retractRuleAssertion
 
 runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m [Fact]
 runQuery facts p args  = do
-  answers <- runAvaWith (insertApplicationAssertion facts) $ query "system" p args
+  answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \lit -> do
      traverse (throwError . VarInQueryResults . snd) lit
 
-runQuery' :: MonadIO m => [Fact] -> Lit TextVar -> PDP m [Fact]
+runQuery' :: MonadIO m => [Fact] -> Query -> PDP m [Fact]
 runQuery' facts (Lit (Pred p _) as) = runQuery facts p as
 
 queryPretty :: MonadIO m => [Fact] -> Text -> [Term TextVar] -> PDP m ()
@@ -140,7 +137,7 @@ queryPretty facts p args = do
   answers <- runQuery facts p args
   liftIO $ mapM_ (putDoc . pretty . factToRule @TextVar) answers
 
-testQuery :: MonadIO m => [Fact] -> Lit TextVar -> PDP m ()
+testQuery :: MonadIO m => [Fact] -> Query -> PDP m ()
 testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
@@ -158,11 +155,17 @@ stripPathPrefix pfx path = maybe path id $ stripPrefix pfx path
 
 -- NB: The given file is parsed as the @system@ assertion regardless of its filename, which is
 -- almost guaranteed to be what you want.
-pdpConfig :: MonadIO m => (FilePath -> FilePath) -> NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
-pdpConfig munge db fp = runExceptT $ do
+pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
+pdpConfig db fp = runExceptT $ do
   sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp (Just $ const "system")
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules sys) db Nothing (munge . stripDotAva) 50 10
+  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+
+pdpConfigText :: MonadIO m => NativeDb m -> Text -> Either PDPError (PDPConfig m)
+pdpConfigText db text = do
+  sys <- first ParseError . coerce $ parseText "system" text
+  first ModeError $ modeCheck (nativeModes db) sys
+  pure $ PDPConfig (compileRules sys) db Nothing 50 10
 
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds
@@ -174,7 +177,7 @@ demoNativeDb = mkNativeDb "base" preds
                 , mkNativePred "lines" $ fmap Solely . T.lines]
 
 demoConfig :: IO (Either PDPError (PDPConfig IO))
-demoConfig = fmap addSubmit <$> pdpConfig id demoNativeDb "system.ava"
+demoConfig = fmap addSubmit <$> pdpConfig demoNativeDb "system.ava"
   where addSubmit conf = conf { submitQuery = Just [qry| may(submit) |]}
 
 -- Everyone: Alec, why not just use lenses?

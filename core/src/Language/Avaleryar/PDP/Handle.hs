@@ -35,14 +35,23 @@ modifyWithPDPHandle (PDPHandle c mv) (PDP ma) = liftIO . modifyMVar mv $ \rdb ->
 submitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> [Fact] -> IO (Either PDPError ())
 submitAssertion h assn rules facts = modifyWithPDPHandle h $ PDP.submitAssertion assn rules facts
 
+unsafeSubmitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> IO (Either PDPError ())
+unsafeSubmitAssertion h assn rules = modifyWithPDPHandle h $ PDP.unsafeSubmitAssertion assn rules
+
 retractAssertion :: PDPHandle -> Text -> IO (Either PDPError ())
 retractAssertion h = modifyWithPDPHandle h . PDP.retractAssertion
 
-submitFile :: PDPHandle -> FilePath -> [Fact] -> IO (Either PDPError ())
-submitFile h path facts = modifyWithPDPHandle h $ PDP.submitFile path facts
+submitFile :: PDPHandle -> Maybe String -> FilePath -> [Fact] -> IO (Either PDPError ())
+submitFile h assn path facts = modifyWithPDPHandle h $ PDP.submitFile assn path facts
 
-unsafeSubmitFile :: PDPHandle -> FilePath -> IO (Either PDPError ())
-unsafeSubmitFile h path = modifyWithPDPHandle h $ PDP.unsafeSubmitFile path
+unsafeSubmitFile :: PDPHandle -> Maybe String -> FilePath -> IO (Either PDPError ())
+unsafeSubmitFile h assn path = modifyWithPDPHandle h $ PDP.unsafeSubmitFile assn path
+
+submitText :: PDPHandle -> Text -> Text -> [Fact] -> IO (Either PDPError ())
+submitText h assn text facts = modifyWithPDPHandle h $ PDP.submitText assn text facts
+
+unsafeSubmitText :: PDPHandle -> Text -> Text -> IO (Either PDPError ())
+unsafeSubmitText h assn text = modifyWithPDPHandle h $ PDP.unsafeSubmitText assn text
 
 runQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError [Fact])
 runQuery h facts p args = withPDPHandle h $ PDP.runQuery facts p args

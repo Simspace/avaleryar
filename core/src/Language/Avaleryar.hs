@@ -1,17 +1,12 @@
 
-module Language.Avaleryar where
+module Language.Avaleryar (module Ava) where
 
-import Data.Coerce
-import qualified Data.Text.IO as T
-import Text.PrettyPrint.Leijen.Text
+import Language.Avaleryar.Parser     as Ava (fct, parseFile, parseText, qry, rls)
+import Language.Avaleryar.PDP        as Ava (PDPConfig(..), PDPError(..), pdpConfig, pdpConfigText)
+import Language.Avaleryar.PDP.Handle as Ava
+    (PDPHandle, checkQuery, dumpDb, newHandle, retractAssertion, submitAssertion, submitFile, submitText,
+    unsafeSubmitAssertion, unsafeSubmitFile, unsafeSubmitText)
+import Language.Avaleryar.Semantics  as Ava (NativeDb, ToNative(..), compileRules, mkNativeDb, mkNativePred)
+import Language.Avaleryar.Syntax     as Ava (Fact, Factual(..), Query, Rule, Valuable(..), fact, lit, query, val)
 
-import Language.Avaleryar.ModeCheck (modeCheck)
-import Language.Avaleryar.Parser (parseFile)
-import Language.Avaleryar.PrettyPrinter ()
-import Language.Avaleryar.Syntax (RawVar(..), TextVar)
 
-foo path = do
-  Right stuff <- parseFile path Nothing
-  case modeCheck mempty $ fmap (fmap unRawVar) stuff of
-    Left err -> T.putStrLn err
-    Right _  -> putDoc $ foldMap pretty stuff
