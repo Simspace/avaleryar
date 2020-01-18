@@ -57,7 +57,7 @@ parens = between (symbol "(") (symbol ")")
 -- I'm stealing ':' for myself, might take more later
 symInit, symCont :: Parser Char
 symInit = letterChar <|> oneOf ("!@$%&*/<=>~_^" :: String)
-symCont = symInit <|> digitChar <|> oneOf (".+-?" :: String)
+symCont = symInit <|> digitChar <|> oneOf ("+-?" :: String)
 
 stringLiteral :: Parser Text
 stringLiteral = T.pack <$> (char '"' *> manyTill L.charLiteral (char '"'))
@@ -84,7 +84,7 @@ term =  Var <$> var <|> Val <$> lexeme value
 lit :: Parser (Lit RawVar)
 lit = label "literal" $ do
   ftor <- ident
-  args <- parens (term `sepBy` comma)
+  args <- concat <$> optional (parens (term `sepBy` comma))
   pure $ Lit (Pred ftor (length args)) args
 
 -- | A specialized version of 'lit' that fails faster for facts.  Like 'rule' and unlike 'lit',
