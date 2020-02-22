@@ -31,7 +31,7 @@ exampleFile fp = exampleDir </> fp
 
 testRulesDb :: RulesDb IO
 testRulesDb = insertRuleAssertion "system" rm mempty
-  where rm = compileRules . fmap (fmap unRawVar) $ [rls| loop(?x) :- loop(?x). |]
+  where rm = compileRules "system" . fmap (fmap unRawVar) $ [rls| loop(?x) :- loop(?x). |]
 
 testNativeDb :: NativeDb IO
 testNativeDb = mkNativeDb "prim" preds
@@ -60,7 +60,7 @@ timeoutSecs n = timeout $ n * 10 ^ 6
 queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO [Lit EVar]
 queryRules q rs = do
   let rdb = insertRuleAssertion "qq" rm mempty
-      rm = compileRules . fmap (fmap unRawVar) $ rs
+      rm = compileRules "qq" . fmap (fmap unRawVar) $ rs
       go = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "qq" q
 
   Just res <- timeoutSecs 1 go
@@ -70,7 +70,7 @@ queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO [Lit EVar]
 queryFile p q = do
   Right rs <- parseFile p (Just $ const "system")
   let rdb = insertRuleAssertion "system" rm mempty
-      rm  = compileRules . fmap (fmap unRawVar) $ rs
+      rm  = compileRules "system" . fmap (fmap unRawVar) $ rs
       go  = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q
 
   Just res <- timeoutSecs 1 go

@@ -72,7 +72,7 @@ lit pn as = Lit (Pred pn (length as)) as
 
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
-data ARef v = ARNative Text | ARTerm (Term v) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
 -- | A 'Lit'eral appearing in the body of a 'Rule' is always qualified by an 'ARef' to an assertion.
 -- When no assertion appears in the concrete syntax, the parser inserts a reference to the assertion

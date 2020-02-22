@@ -12,7 +12,7 @@ import qualified Data.Text                    as T
 import           Text.PrettyPrint.Leijen.Text
 
 import Language.Avaleryar.Semantics (RulesDb(..))
-import Language.Avaleryar.Syntax
+import Language.Avaleryar.Syntax hiding (lit)
 
 instance Pretty Pred where
   pretty (Pred p n) = pretty p <> "/" <> pretty n
@@ -27,9 +27,11 @@ instance Pretty v => Pretty (Lit v) where
 instance Pretty v => Pretty (ARef v) where
   pretty (ARTerm t)   = pretty t
   pretty (ARNative n) = colon <> pretty n
+  pretty ARCurrent    = mempty
 
 instance Pretty v => Pretty (BodyLit v) where
-  pretty (aref `Says` lit) = pretty aref <> space <> "says" <> space <> pretty lit
+  pretty (ARCurrent `Says` lit) = pretty lit
+  pretty (aref `Says` lit)      = pretty aref <> space <> "says" <> space <> pretty lit
 
 instance Pretty v => Pretty (Rule v) where
   pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line
