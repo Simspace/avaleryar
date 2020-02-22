@@ -68,7 +68,7 @@ queryRules q rs = do
 
 queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO [Lit EVar]
 queryFile p q = do
-  Right rs <- parseFile p (Just $ const "system")
+  Right rs <- parseFile p
   let rdb = insertRuleAssertion "system" rm mempty
       rm  = compileRules "system" . fmap (fmap unRawVar) $ rs
       go  = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q

@@ -113,7 +113,7 @@ unsafeSubmitAssertion assn rules = do
 -- | TODO: ergonomics, protect "system", etc.
 unsafeSubmitFile :: MonadIO m => Maybe String -> FilePath -> PDP m ()
 unsafeSubmitFile assn path = do
-  rules <- liftIO $ parseFile path (const <$> assn)
+  rules <- liftIO $ parseFile path
   unsafeSubmitAssertion (pack $ maybe (stripDotAva path) id assn) =<< either (throwError . ParseError) (pure . coerce) rules
 
 unsafeSubmitText :: MonadIO m => Text -> Text -> PDP m ()
@@ -157,7 +157,7 @@ stripPathPrefix pfx path = maybe path id $ stripPrefix pfx path
 -- almost guaranteed to be what you want.
 pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
 pdpConfig db fp = runExceptT $ do
-  sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp (Just $ const "system")
+  sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
   pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
 

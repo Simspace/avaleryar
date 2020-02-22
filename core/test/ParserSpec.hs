@@ -34,9 +34,9 @@ spec = do
       [fct| fact(symbol) |] `shouldBe` Lit (Pred "fact" 1) [Val "symbol"]
 
     it "parse rules" $ do
-      let ruleA = Rule (Lit (Pred "a" 1) [Var "x"]) [ARTerm (Val "qq") `Says` Lit (Pred "b" 1) [Var "x"] ]
-          ruleB = Rule (Lit (Pred "b" 1) [Var "x"]) [ARTerm (Val "qq") `Says` Lit (Pred "c" 1) [Var "y"]
-                                                    , ARTerm (Val "qq") `Says` Lit (Pred "a" 1) [Var "x"] ]
+      let ruleA = Rule (Lit (Pred "a" 1) [Var "x"]) [ARCurrent `Says` Lit (Pred "b" 1) [Var "x"] ]
+          ruleB = Rule (Lit (Pred "b" 1) [Var "x"]) [ARCurrent `Says` Lit (Pred "c" 1) [Var "y"]
+                                                    , ARCurrent `Says` Lit (Pred "a" 1) [Var "x"] ]
           ruleC = Rule (Lit (Pred "c" 1) [Var "y"]) [ARTerm (Val "t") `Says` Lit (Pred "a" 2) [Var "x", Var "y"]
                                                     , ARNative "nat" `Says` Lit (Pred "b" 1) [Var "y"] ]
       [rls| a(?x) :- b(?x). b(?x) :- c(?y), a(?x). c(?y) :- t says a(?x, ?y), :nat says b(?y). |]
@@ -48,5 +48,5 @@ spec = do
       files <- filter ((== ".ava") . takeExtension) <$> listDirectory exampleDir
       when (null files) $ expectationFailure ("no .ava files in example directory: " <> exampleDir)
       for_ files $ \file -> do
-         parsed <- parseFile (exampleFile file) Nothing
+         parsed <- parseFile (exampleFile file)
          parsed `shouldSatisfy` isRight

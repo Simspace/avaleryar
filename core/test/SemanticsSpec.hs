@@ -20,7 +20,7 @@ spec = do
     it "don't run forever" $ do
       let go = runAvalaryarT 5000 1 testDb q
           q  = compileQuery "system" "loop" [Var "x"]
-      timeoutSecs 1 go `shouldReturn` Just []
+      timeoutSecs 4 go `shouldReturn` Just []
 
     it "have limited output" $ do
       Just answers <- timeoutSecs 1 $ runAvalaryarT 5000 10 testDb (msum . replicate 74 $ pure ())
