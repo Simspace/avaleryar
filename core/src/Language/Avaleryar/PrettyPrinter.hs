@@ -29,7 +29,7 @@ instance Pretty v => Pretty (ARef v) where
   pretty (ARNative n) = colon <> pretty n
 
 instance Pretty v => Pretty (BodyLit v) where
-  pretty (aref `Says` lit) = pretty aref <> space <> "says" <> space <> pretty lit
+  pretty (aref `Says` l) = pretty aref <> space <> "says" <> space <> pretty l
 
 instance Pretty v => Pretty (Rule v) where
   pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line

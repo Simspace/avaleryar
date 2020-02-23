@@ -187,9 +187,9 @@ loadResolver (ARTerm   t) p = do
 -- which I think might be inefficient, but I also think was tricky to not-do here way back when I
 -- wrote this.
 resolve :: (Monad m) => Goal -> AvaleryarT m (Lit EVar)
-resolve (assn `Says` lit@(Lit p as)) = do
+resolve (assn `Says` l@(Lit p as)) = do
   resolver <- yield' $ loadResolver assn p
-  resolver lit
+  resolver l
   Lit p <$> traverse subst as
 
 

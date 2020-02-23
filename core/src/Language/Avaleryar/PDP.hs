@@ -126,8 +126,8 @@ retractAssertion = modifyRulesDb . retractRuleAssertion
 runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m [Fact]
 runQuery facts p args  = do
   answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
-  flip traverse answers $ \lit -> do
-     traverse (throwError . VarInQueryResults . snd) lit
+  flip traverse answers $ \l -> do
+     traverse (throwError . VarInQueryResults . snd) l
 
 runQuery' :: MonadIO m => [Fact] -> Query -> PDP m [Fact]
 runQuery' facts (Lit (Pred p _) as) = runQuery facts p as
@@ -166,6 +166,13 @@ pdpConfigText db text = do
   sys <- first ParseError . coerce $ parseText "system" text
   first ModeError $ modeCheck (nativeModes db) sys
   pure $ PDPConfig (compileRules sys) db Nothing 50 10
+
+pdpConfigRules :: MonadIO m => NativeDb m -> [Rule TextVar] -> Either PDPError (PDPConfig m)
+pdpConfigRules db rules = do
+  sys <- pure $ coerce rules
+  first ModeError $ modeCheck (nativeModes db) sys
+  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+
 
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds

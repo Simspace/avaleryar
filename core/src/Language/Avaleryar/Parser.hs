@@ -5,6 +5,7 @@
 module Language.Avaleryar.Parser
   ( -- * Parsers
     parseFile
+  , parseFile'
   , parseFactFile
   , parseFacts
   , parseQuery
@@ -18,6 +19,7 @@ module Language.Avaleryar.Parser
 import           Control.Monad              (void)
 import           Control.Monad.Reader
 import           Data.Bifunctor             (first)
+import           Data.Either                (partitionEithers)
 import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
@@ -96,6 +98,13 @@ fact = label "fact" $ do
   dot
   pure $ Lit (Pred ftor (length args)) args
 
+-- | Like 'fact', but without the trailing 'dot'.  FIXME: Suck less.
+fact' :: Parser Fact
+fact' = label "fact" $ do
+  ftor <- ident
+  args <- fmap Val <$> parens (value `sepBy` comma)
+  pure $ Lit (Pred ftor (length args)) args
+
 aref :: Parser (ARef RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
@@ -111,17 +120,34 @@ rule = Rule <$> lit <*> (body <|> dot *> pure [])
         bodyLits = bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
-ruleFile :: Parser [Rule RawVar]
-ruleFile = ws *> many rule
+directive :: Parser Directive
+directive = do
+  void $ symbol ":-"
+  label "directive" $
+    Directive <$> fact' <*> fact' `sepBy` comma <* dot
+
+-- ruleFile :: Parser [Rule RawVar]
+-- ruleFile = ws *> many rule
 
 factFile :: Parser [Fact]
 factFile = ws *> many fact
 
-parseFile :: FilePath -> Maybe (FilePath -> String) -> IO (Either String [Rule RawVar])
-parseFile path modAssn = do
+-- FIXME: Suck less
+ruleFile' :: Parser ([Directive], [Rule RawVar])
+ruleFile' = ws *> (partitionEithers <$> many (fmap Left directive <|> fmap Right rule))
+
+parseFile' :: FilePath -> Maybe (FilePath -> String) -> IO (Either String ([Directive], [Rule RawVar]))
+parseFile' path modAssn = do
   let assn = fromString . maybe dropExtension ($) modAssn $ path
   file <- T.readFile path
-  pure . first errorBundlePretty $ parse (runReaderT ruleFile (ParserSettings assn)) path file
+  pure . first errorBundlePretty $ parse (runReaderT ruleFile' (ParserSettings assn)) path file
+
+parseText' :: Text -> Text -> Either String ([Directive], [Rule RawVar])
+parseText' assn = first errorBundlePretty . parse go (T.unpack assn)
+  where go = runReaderT ruleFile' (ParserSettings $ T assn)
+
+parseFile :: FilePath -> Maybe (FilePath -> String) -> IO (Either String [Rule RawVar])
+parseFile path modAssn = fmap snd <$> parseFile' path modAssn
 
 parseFactFile :: FilePath -> IO (Either String [Fact])
 parseFactFile path = do
@@ -132,15 +158,14 @@ parseFacts :: Text -> Either String [Fact]
 parseFacts src = first errorBundlePretty $ parse (runReaderT factFile (ParserSettings "application")) "" src
 
 parseText :: Text -> Text -> Either String [Rule RawVar]
-parseText assn = first errorBundlePretty . parse go (T.unpack assn)
-  where go = runReaderT ruleFile (ParserSettings $ T assn)
+parseText assn src = snd <$> parseText' assn src
 
 parseQuery :: Text -> Text -> Either String Query
 parseQuery assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
 
-testParseFile :: FilePath -> IO (Either String [Rule RawVar])
-testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
+-- testParseFile :: FilePath -> IO (Either String [Rule RawVar])
+-- testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
 
 rulesQQParser :: String -> Either String [Rule RawVar]
 rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
@@ -163,3 +188,4 @@ qry = qqLiteral queryQQParser 'queryQQParser
 
 fct :: QuasiQuoter
 fct = qqLiteral factQQParser 'factQQParser
+
