@@ -1,0 +1,43 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 2b3eb8bc7ce55b1eac3a9fdc1ed2f248c6c878c21163ca0eff204e23fc584359
+
+name:           avaleryar-repl
+version:        0.0.0
+build-type:     Simple
+
+library
+  exposed-modules:
+      Language.Avaleryar.Repl
+  other-modules:
+      Paths_avaleryar_repl
+  hs-source-dirs:
+      src
+  build-depends:
+      avaleryar
+    , avaleryar-extras
+    , base
+    , containers
+    , haskeline
+    , mtl
+    , optparse-applicative
+    , read-editor
+    , repline
+    , text
+    , wl-pprint-text
+  default-language: Haskell2010
+
+executable avai
+  main-is: avai.hs
+  other-modules:
+      Paths_avaleryar_repl
+  hs-source-dirs:
+      repl
+  build-depends:
+      avaleryar-repl
+    , base
+  default-language: Haskell2010

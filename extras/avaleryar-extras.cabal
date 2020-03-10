@@ -1,0 +1,35 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: b18813f29a93ff09160b6c722f0c7614f312a948f94ca76fcb547573b6d18d2c
+
+name:           avaleryar-extras
+version:        0.0.0
+build-type:     Simple
+
+library
+  exposed-modules:
+      Language.Avaleryar.Instances
+      Language.Avaleryar.Native.Base
+      Language.Avaleryar.Native.Config
+      Language.Avaleryar.Native.JSON
+  other-modules:
+      Paths_avaleryar_extras
+  hs-source-dirs:
+      src
+  build-depends:
+      aeson
+    , attoparsec
+    , avaleryar
+    , base
+    , containers
+    , jose-jwt
+    , jsonpath
+    , mtl
+    , postgresql-simple
+    , text
+    , time
+  default-language: Haskell2010
