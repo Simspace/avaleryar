@@ -16,7 +16,7 @@
 -- is not at all similar to the trick described in Ralf Hinze's ICFP'00 paper,
 -- Deriving backtracking monad transformers.
 
--- $Id: FBackTrackT.hs,v 1.1.0.1 2005/10/31 22:34:25 oleg Exp oleg $
+-- Haddock doesn't like @-- $Id@: $Id: FBackTrackT.hs,v 1.1.0.1 2005/10/31 22:34:25 oleg Exp oleg $
 
 module Control.Monad.FBackTrackT
   ( Stream
