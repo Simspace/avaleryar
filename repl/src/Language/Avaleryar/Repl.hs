@@ -19,7 +19,7 @@ import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (unpack, Text)
 import           Options.Applicative          as Opts
-import           System.Console.Repline       as RL
+import           System.Console.Repline       as RL hiding (banner, options)
 import           System.IO.Unsafe
 import           System.ReadEditor            (readEditorWith)
 import           Text.PrettyPrint.Leijen.Text (Pretty, pretty)

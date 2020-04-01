@@ -183,7 +183,7 @@ type SG = Stream
 -- Hinze's `observe' -- the opposite of `lift'
 --	observe . lift == id
 
-observe :: Monad m => Stream m a -> m a
+observe :: MonadFail m => Stream m a -> m a
 observe m = unStream m >>= pick1
   where pick1 Nil            = fail "no anwers"
         pick1 (One a)        = return a
