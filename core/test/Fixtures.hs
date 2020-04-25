@@ -55,7 +55,7 @@ testDb :: Db IO
 testDb = Db testRulesDb testNativeDb
 
 timeoutSecs :: Int -> IO a -> IO (Maybe a)
-timeoutSecs n = timeout $ n * 10 ^ 6
+timeoutSecs n = timeout $ n * 10 ^ (6 :: Int)
 
 queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO [Lit EVar]
 queryRules q rs = do
