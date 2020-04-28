@@ -16,7 +16,6 @@ module Language.Avaleryar.Parser
   , rls
   ) where
 
-import           Control.Monad              (void)
 import           Control.Monad.Reader
 import           Data.Bifunctor             (first)
 import           Data.Either                (partitionEithers)
