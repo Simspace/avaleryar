@@ -1,0 +1,8 @@
+I am far from knowledgable about writing vim plugins.  But the tutorial said I
+should have a README.
+
+In theory, if you're using vundle, you ought to be able to do:
+
+```
+Plugin 'Simspace/avaleryar', { 'rtp': 'tools/vim' }
+```
