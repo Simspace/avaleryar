@@ -8,18 +8,19 @@
   '((t (:inherit font-lock-builtin-face)))
   "Soutei builtin operators")
 
-(defvar soutei-indent-width prolog-indent-width
+(defvar soutei-indent-width 2
   "indentation width used by auto-indent functions")
 
 (defvar soutei-mode-map (make-keymap)
   "Keymap for soutei major mode")
 
 (defvar soutei-mode-syntax-table
-  (let ((synTable (make-syntax-table)))
-    (modify-syntax-entry ?- "_" synTable)
-    (modify-syntax-entry ?\; "<" synTable)
-    (modify-syntax-entry ?\n ">" synTable)
-    synTable)
+  (let ((syn-table (make-syntax-table)))
+    (modify-syntax-entry ?- "_" syn-table)
+    (modify-syntax-entry ?\; "<" syn-table)
+    (modify-syntax-entry ?\n ">" syn-table)
+    (modify-syntax-entry ?% "_" syn-table) ;; comment in prolog; override here
+    syn-table)
   "Syntax table for `soutei-mode'"
   )
 
@@ -36,7 +37,7 @@
 
 (define-derived-mode soutei-mode prolog-mode "Soutei"
   "Major mode for editing Soutei files"
-  (set-syntax-table soutei-mode-syntax-table)
+  :syntax-table soutei-mode-syntax-table
   (set (make-local-variable 'comment-start) ";")
   (set (make-local-variable 'comment-end) "")
   (set (make-local-variable 'comment-start-skip) ";+ *")
