@@ -4,6 +4,8 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 
 {-|
@@ -39,9 +41,10 @@ name of the assertion in which @may\/1@ is defined).  In brief:
 
 module Language.Avaleryar.Syntax where
 
-import Data.Map    (Map)
+import Data.Functor.Const (Const(..))
+import Data.Map           (Map)
 import Data.String
-import Data.Text   (Text)
+import Data.Text          (Text)
 import Data.Void
 
 data Value
@@ -161,6 +164,8 @@ instance Valuable Bool where
   toValue = B
   fromValue (B a) = Just a
   fromValue _     = Nothing
+
+deriving instance Valuable a => Valuable (Const a (b :: k))
 
 fromTerm :: Valuable a => Term v -> Maybe a
 fromTerm (Val x) = fromValue x
