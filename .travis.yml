@@ -1,0 +1,36 @@
+# https://docs.haskellstack.org/en/stable/travis_ci/
+# https://nixos.wiki/wiki/Nix_on_Travis
+language: nix
+cache:
+  directories:
+  - $HOME/nix.store
+  - $HOME/.stack
+  - $TRAVIS_BUILD_DIR/.stack-work
+
+os: linux
+dist: bionic
+
+env:
+  - PACKAGE=core
+  - PACKAGE=repl
+  - PACKAGE=extras
+
+before_install:
+  - sudo mkdir -p /etc/nix
+  - echo "substituters = https://cache.nixos.org/ file://$HOME/nix.store" | sudo tee -a /etc/nix/nix.conf > /dev/null
+  - echo 'require-sigs = false' | sudo tee -a /etc/nix/nix.conf > /dev/null
+  - nix-env -iA nixpkgs.stack
+
+before_cache:
+  - mkdir -p $HOME/nix.store
+  - nix copy --to file://$HOME/nix.store -f default.nix buildInputs
+
+before_script:
+  - sudo mkdir -p /etc/nix && echo 'sandbox = true' | sudo tee /etc/nix/nix.conf
+
+script:
+  - stack --version
+  - travis_retry eval $"stack build --dependencies-only $PACKAGE"
+  - stack build $PACKAGE
+  - travis_retry eval $"stack test --no-run-tests $PACKAGE"
+  - stack test $PACKAGE
