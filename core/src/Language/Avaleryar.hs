@@ -1,4 +1,4 @@
-
+{-# LANGUAGE TemplateHaskell #-}
 module Language.Avaleryar (module Ava) where
 
 import Language.Avaleryar.Parser     as Ava (fct, parseFile, parseText, qry, rls)
@@ -9,4 +9,5 @@ import Language.Avaleryar.PDP.Handle as Ava
 import Language.Avaleryar.Semantics  as Ava (NativeDb, ToNative(..), compileRules, mkNativeDb, mkNativePred)
 import Language.Avaleryar.Syntax     as Ava (Fact, Factual(..), Query, Rule, Valuable(..), fact, lit, query, val)
 
-
+import TH
+$evil

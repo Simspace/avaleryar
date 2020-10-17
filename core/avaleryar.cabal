@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: cb24277ec76c8c58096fc0d964c9fa279bec7d2a2f1b4944c8ff815dc16d86a9
+-- hash: 088bc4d905b46b4868e8a8f748bc315f1b55259a7fb522e076099271e0c46260
 
 name:           avaleryar
 version:        0.0.0
@@ -24,6 +24,7 @@ library
       Language.Avaleryar.Semantics
       Language.Avaleryar.Syntax
       Language.Avaleryar.Testing
+      TH
   other-modules:
       Paths_avaleryar
   hs-source-dirs:
@@ -31,6 +32,7 @@ library
   build-depends:
       base
     , containers
+    , directory
     , filepath
     , megaparsec
     , mtl
