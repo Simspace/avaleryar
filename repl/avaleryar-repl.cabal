@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 49fcbd961da9eac0ec33322a1a445073676debb608f0dbd9ebf370c8f8e94a01
+-- hash: 7035551c001e4368c98bedebea9a85f4f2e861fb2078c96da206c369e932ded4
 
 name:           avaleryar-repl
 version:        0.0.1
@@ -21,7 +21,7 @@ library
       avaleryar
     , base
     , containers
-    , haskeline
+    , haskeline ==0.7.*
     , mtl
     , optparse-applicative
     , read-editor
