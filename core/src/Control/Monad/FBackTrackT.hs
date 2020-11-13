@@ -80,7 +80,7 @@ instance Monad m => MonadPlus (Stream m) where
         One b        -> return $ Choice b i
         Choice b r'  -> return $ Choice b (mplus i r')
         -- Choice _ _ -> Incomplete (mplus r' i)
-        Incomplete j -> return $ Incomplete (mplus i j)
+        Incomplete j -> return . Incomplete . yield $ mplus i j
 
 instance Monad m => Fail.MonadFail (Stream m) where
   fail _ = mzero
