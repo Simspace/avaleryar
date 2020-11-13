@@ -34,6 +34,16 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans
 
+
+
+
+
+import Debug.Trace
+
+
+
+
+
 data StreamE m a
   = Nil
   | One a
@@ -105,7 +115,7 @@ runM' _ _   Nil                 = return []
 runM' _ _ (One a)               = return [a]
 runM' d b (Choice a r)          = do t <- runM d (liftM pred b) r; return (a:t)
 runM' (Just 0) _ (Incomplete r) = return [] -- exhausted depth
-runM' d b (Incomplete r)        = runM (liftM pred d) b r
+runM' d b (Incomplete r)        = traceM ("!!!\nsuspension: " <> maybe "" show d <> "\n!!!") >> runM (liftM pred d) b r
 
 
 -- Don't try the following with the regular List monad or List comprehension!

@@ -69,12 +69,32 @@ import           Data.Foldable
 import           Data.Map             (Map)
 import qualified Data.Map             as Map
 import           Data.String
-import           Data.Text            (Text, pack)
+import           Data.Text            (Text, pack, unpack)
 import           Data.Void            (vacuous)
 
 import Control.Monad.FBackTrackT
 
 import Language.Avaleryar.Syntax
+
+
+
+
+
+
+
+
+
+import qualified Debug.Trace as DT
+import Text.PrettyPrint.Leijen.Text (Pretty(..), renderOneLine, displayTStrict)
+
+
+tracePretty :: Pretty a => a -> b -> b
+tracePretty = DT.trace . unpack . displayTStrict . renderOneLine . pretty
+
+traceMPretty :: (Applicative f, Pretty a) => a -> f ()
+traceMPretty = DT.traceM . unpack . displayTStrict . renderOneLine . pretty
+
+
 
 -- | A native predicate carries not just its evaluation function, but also its signature, so it may
 -- be consulted when new assertions are submitted in order to mode-check them.
@@ -112,7 +132,8 @@ alookup k m = maybe empty pure $ Map.lookup k m
 -- | Look up a the 'Pred' in the assertion denoted by the given 'Value', and return the code to
 -- execute it.
 loadRule :: (Monad m) => Value -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
-loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
+loadRule c p = thingy gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
+  where thingy = tracePretty ("load rule: " <> pretty c <> "::" <> pretty p)
 
 -- | As 'loadRule' for native predicates.
 loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
@@ -151,12 +172,13 @@ lookupEVar ev = do
 -- | As 'lookupEVar', using the current value of the 'Epoch' counter in the runtime state.
 lookupVar :: Monad m => TextVar -> AvaleryarT m (Term EVar)
 lookupVar v = do
-  ev <- (,) <$> gets epoch <*> pure v
+  ev <- EVar <$> gets epoch <*> pure v
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
 unifyTerm :: (Monad m) => Term EVar -> Term EVar -> AvaleryarT m ()
 unifyTerm t t' = do
+  traceMPretty $ "unify:     " <> pretty t <> " = " <> pretty t'
   ts  <- subst t
   ts' <- subst t'
   unless (ts == ts') $ do
@@ -188,6 +210,7 @@ loadResolver (ARTerm   t) p = do
 -- wrote this.
 resolve :: (Monad m) => Goal -> AvaleryarT m (Lit EVar)
 resolve (assn `Says` l@(Lit p as)) = do
+  traceMPretty $ "resolve:   " <> pretty l
   resolver <- yield' $ loadResolver assn p
   resolver l
   Lit p <$> traverse subst as
@@ -207,7 +230,8 @@ compilePred :: (Monad m) => [Rule TextVar] -> Lit EVar -> AvaleryarT m ()
 compilePred rules (Lit _ qas) = do
   rt@RT {..} <- get
   put rt {epoch = succ epoch}
-  let rules' = fmap (epoch,) <$> rules
+
+  let rules' = fmap (EVar epoch) <$> rules
       go (Rule (Lit _ has) body) = do
         unifyArgs has qas
         traverse_ resolve body
@@ -218,7 +242,7 @@ compileRules :: (Monad m) => [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT 
 compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
 compileQuery :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
-compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (-1,)) args))
+compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
