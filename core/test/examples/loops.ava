@@ -1,0 +1,5 @@
+
+loop1(?x) :- loop1(?x).
+
+loop2(?x) :- loop2(?x).
+loop2(?y) :- loop2(?y).
