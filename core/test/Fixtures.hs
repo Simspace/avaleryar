@@ -20,10 +20,12 @@ import Test.Hspec
 import Test.QuickCheck (arbitrary, generate)
 
 shouldSucceed, shouldFail, shouldNotTimeout :: (HasCallStack) => IO TestResult -> Expectation
-shouldSucceed io    = io >>= (`shouldSatisfy` isSuccess)
-  where isSuccess (Success _) = True
-        isSuccess _           = False
-shouldFail    io    = io `shouldReturn` Failure
+shouldSucceed    io = io >>= (`shouldSatisfy` isSuccess)
+  where isSuccess (Result (Success _)) = True
+        isSuccess _                    = False
+shouldFail       io = io >>= (`shouldSatisfy` isFailure)
+  where isFailure (Result (Success _)) = False
+        isFailure _                    = True
 shouldNotTimeout io = io `shouldNotReturn` Timeout
 
 exampleDir :: FilePath
@@ -61,13 +63,11 @@ timeoutSecs :: Int -> IO a -> IO (Maybe a)
 timeoutSecs n = timeout $ n * 10 ^ (6 :: Int)
 
 -- | TODO: Push this back into 'runAvaleryarT' or 'runM'...
-data TestResult = Success [Lit EVar] | Failure | Timeout
+data TestResult = Result (AvaResults (Lit EVar)) | Timeout
   deriving (Eq, Ord, Read, Show)
 
-testResult :: Maybe [Lit EVar] -> TestResult
-testResult Nothing   = Timeout
-testResult (Just []) = Failure
-testResult (Just ss) = Success ss
+testResult :: Maybe (AvaResults (Lit EVar)) -> TestResult
+testResult = maybe Timeout Result
 
 queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO TestResult
 queryRules q rs = do

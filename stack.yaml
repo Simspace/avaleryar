@@ -1,7 +1,7 @@
 resolver: lts-15.5
 packages:
   - ./core
-  - ./extras
+  # - ./extras # avaleryar-extras isn't getting the use I'd hoped; gonna stop building it for a bit.
   - ./repl
 extra-deps:
   - qq-literals-0.1.0.1

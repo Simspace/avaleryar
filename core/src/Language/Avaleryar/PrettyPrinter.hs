@@ -50,7 +50,7 @@ instance Pretty RawVar where
 putQuery :: Lit TextVar -> IO ()
 putQuery = putDoc . pretty
 
-putFacts :: [Fact] -> IO ()
+putFacts :: Foldable t => t Fact -> IO ()
 putFacts = traverse_ (putDoc . pretty . factToRule @TextVar)
 
 putRulesDb :: RulesDb m -> IO ()

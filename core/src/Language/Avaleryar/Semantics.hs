@@ -1,4 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -112,11 +115,11 @@ alookup k m = maybe empty pure $ Map.lookup k m
 -- | Look up a the 'Pred' in the assertion denoted by the given 'Value', and return the code to
 -- execute it.
 loadRule :: (Monad m) => Value -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
-loadRule c p = gets (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
+loadRule c p = getsRT (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
 -- | As 'loadRule' for native predicates.
 loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
-loadNative n p = gets (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
+loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
 
 -- | Runtime state for 'AvaleryarT' computations.
 data RT m = RT
@@ -125,33 +128,73 @@ data RT m = RT
   , db    :: Db m  -- ^ The database of compiled predicates
   }
 
+-- | Allegedly more-detailed results from an 'AvalerlyarT' computation.  Probably will include
+-- (wall-clock) timing information in the future, and perhaps even other stuff.  A more ergonomic
+-- type is 'AvaResults', which you can build from 'DetailedResults' with 'avaResults'.
+data DetailedResults a = DetailedResults
+  { initialDepth, initialBreadth     :: Int
+  , remainingDepth, remainingBreadth :: Int
+  , results                          :: [a]
+  } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable)
+
+-- | The results of running an 'AvaleryarT' computation.
+data AvaResults a
+  = Failure       -- ^ Produced no results
+  | FuelExhausted -- ^ Ran out of fuel before producing any results
+  | Success [a]   -- ^ Produced some results; may or may not have run out of fuel
+    deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable)
+
+avaResults :: DetailedResults a -> AvaResults a
+avaResults DetailedResults {..} = case (remainingDepth, results) of
+                                    (0, []) -> FuelExhausted
+                                    (_, []) -> Failure
+                                    (_, rs) -> Success rs
+
+type QueryResults         = AvaResults      Fact
+type DetailedQueryResults = DetailedResults Fact
+
 -- | A fair, backtracking, terminating, stateful monad transformer that does all the work.  This is
 -- 'StateT' over 'Stream', so state changes are undone on backtracking.  This is important.
 newtype AvaleryarT m a = AvaleryarT { unAvaleryarT :: StateT (RT m) (Stream m) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadState (RT m), MonadYield, MonadIO)
+  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadYield, MonadIO)
 
 -- | Run an 'AvaleryarT' computation.  The first argument is an upper limit on the number of
 -- backtracking steps the computation may take before terminating, the second is an upper limit on
 -- the number of values the computation may produce before terminating.  Both could be made optional
 -- (unlimited depth, unlimited answers), but that doesn't seem like the point of what we're trying
 -- to do here.
-runAvalaryarT :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m [a]
-runAvalaryarT x y db = runM (Just x) (Just y)
-                     . flip evalStateT (RT mempty 0 db)
-                     . unAvaleryarT
+runAvalaryarT :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m (AvaResults a)
+runAvalaryarT d b db = fmap avaResults . runAvalaryarT' d b db
+
+runAvalaryarT' :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m (DetailedResults a)
+runAvalaryarT' d b db = fmap go
+                      . runM' (Just d) (Just b)
+                      . flip evalStateT (RT mempty 0 db)
+                      . unAvaleryarT
+  where go (Just d', Just b', as) = DetailedResults d b d' b' as
+        go _                      = error "runM' gave back Nothings; shouldn't happen"
+
+getRT :: Monad m => AvaleryarT m (RT m)
+getRT = AvaleryarT get
+
+getsRT :: Monad m => (RT m -> a) -> AvaleryarT m a
+getsRT = AvaleryarT . gets
+
+putRT :: Monad m => RT m -> AvaleryarT m ()
+putRT = AvaleryarT . put
 
 -- | Try to find a binding for the given variable in the current substitution.
 --
 -- NB: The resulting 'Term' may still be a variable.
 lookupEVar :: Monad m => EVar -> AvaleryarT m (Term EVar)
 lookupEVar ev = do
-  RT {..} <- get
+  RT {..} <- getRT
   alookup ev env
 
 -- | As 'lookupEVar', using the current value of the 'Epoch' counter in the runtime state.
 lookupVar :: Monad m => TextVar -> AvaleryarT m (Term EVar)
 lookupVar v = do
-  ev <- (,) <$> gets epoch <*> pure v
+  ev <- (,) <$> getsRT epoch <*> pure v
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
@@ -160,10 +203,10 @@ unifyTerm t t' = do
   ts  <- subst t
   ts' <- subst t'
   unless (ts == ts') $ do
-    rt@RT {..} <- get
+    rt@RT {..} <- getRT
     case (ts, ts') of
-      (Var v, _) -> put rt {env = Map.insert v ts' env}
-      (_, Var v) -> put rt {env = Map.insert v ts  env}
+      (Var v, _) -> putRT rt {env = Map.insert v ts' env}
+      (_, Var v) -> putRT rt {env = Map.insert v ts  env}
       _          -> empty -- ts /= ts', both are values
 
 -- | Apply the current substitution on the given 'Term'.  This function does path compression: if it
@@ -171,7 +214,7 @@ unifyTerm t t' = do
 -- variable, it will give it right back.
 subst :: Monad m => Term EVar -> AvaleryarT m (Term EVar)
 subst v@(Val _)    = pure v
-subst var@(Var ev) = gets env >>= maybe (pure var) subst . Map.lookup ev
+subst var@(Var ev) = getsRT env >>= maybe (pure var) subst . Map.lookup ev
 
 type Goal = BodyLit EVar
 
@@ -205,8 +248,8 @@ unifyArgs _ _           = empty
 -- This is not the function you want.  FIXME: Suck less
 compilePred :: (Monad m) => [Rule TextVar] -> Lit EVar -> AvaleryarT m ()
 compilePred rules (Lit _ qas) = do
-  rt@RT {..} <- get
-  put rt {epoch = succ epoch}
+  rt@RT {..} <- getRT
+  putRT rt {epoch = succ epoch}
   let rules' = fmap (epoch,) <$> rules
       go (Rule (Lit _ has) body) = do
         unifyArgs has qas

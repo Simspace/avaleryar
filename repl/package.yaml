@@ -6,7 +6,6 @@ library:
   dependencies:
     - base
     - avaleryar
-    - avaleryar-extras
 
     - containers
     - haskeline

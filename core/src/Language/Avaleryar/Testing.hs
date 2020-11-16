@@ -124,7 +124,7 @@ missingAssertions (Test tc (rs, ndb)) = unalias . filter (`notElem` assns) $ (fs
         unalias = foldMap (toList . flip lookup (testAssns tc))
 
 -- TODO: Pretty output for test results.
-data TestResult = Success | Failure | Error PDPError
+data TestResult = Pass | Fail | Error PDPError
   deriving (Eq, Ord, Show)
 
 data TestError = MissingAssertions [Text]
@@ -133,8 +133,8 @@ data TestError = MissingAssertions [Text]
 type TestResults = Either TestError [(Query, TestResult)]
 
 instance Pretty TestResult where
-  pretty Success   = "ok"
-  pretty Failure   = "fail"
+  pretty Pass      = "ok"
+  pretty Fail      = "fail"
   pretty (Error e) = pretty $ show e -- TODO: Suck Less
 
 instance Pretty TestError where
@@ -156,7 +156,7 @@ runTest hdl t = go (missingAssertions t)
 
 runTestQuery :: PDPHandle -> [Fact] -> Query -> IO TestResult
 runTestQuery hdl app (Lit (Pred p _) as) = resultify <$> checkQuery hdl app p as
-  where resultify = either Error (bool Failure Success)
+  where resultify = either Error (bool Fail Pass)
 
 runTestQuery' :: PDPHandle -> [Fact] -> Query -> IO (Query, TestResult)
 runTestQuery' hdl app q = (q,) <$> runTestQuery hdl app q

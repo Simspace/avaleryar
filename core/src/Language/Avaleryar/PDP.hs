@@ -63,7 +63,7 @@ runPDP (PDP ma) = flip evalStateT mempty . runExceptT . runReaderT ma
 runPDP' :: PDP IO a -> PDPConfig IO -> IO a
 runPDP' pdp conf = runPDP pdp conf >>= either (error . show) pure
 
-runAva :: Monad m => AvaleryarT m a -> PDP m [a]
+runAva :: Monad m => AvaleryarT m a -> PDP m (AvaResults a)
 runAva = runAvaWith id
 
 -- | Run an 'AvaleryarT' computation inside a 'PDP', configured according to the latter's
@@ -74,13 +74,16 @@ runAva = runAvaWith id
 -- NB: The system assertion from the config is added to the the rule database after the caller's
 -- mucking function has done its business to ensure that the caller can't sneakily override the
 -- @system@ assertion with their own.
-runAvaWith :: Monad m => (RulesDb m -> RulesDb m) -> AvaleryarT m a -> PDP m [a]
-runAvaWith f ma = do
+runAvaWith :: Monad m => (RulesDb m -> RulesDb m) -> AvaleryarT m a -> PDP m (AvaResults a)
+runAvaWith f ma = avaResults <$> runDetailedWith f ma
+
+runDetailedWith :: Monad m => (RulesDb m -> RulesDb m) -> AvaleryarT m a -> PDP m (DetailedResults a)
+runDetailedWith f ma = do
   PDPConfig {..} <- askConfig
   -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
   rdb            <- insertRuleAssertion "system" systemAssertion . f <$> getRulesDb
-  lift $ runAvalaryarT maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
-  -- is this exactly what I just said not to do ^ ?
+  lift $ runAvalaryarT' maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
+  -- is this exactly what I just said not to do  ^ ?
 
 checkRules :: Monad m => [Rule TextVar] -> PDP m ()
 checkRules rules = do
@@ -123,13 +126,19 @@ unsafeSubmitText assn text = unsafeSubmitAssertion assn =<< either (throwError .
 retractAssertion :: Monad m => Text -> PDP m ()
 retractAssertion = modifyRulesDb . retractRuleAssertion
 
-runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m [Fact]
+runDetailedQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m DetailedQueryResults
+runDetailedQuery facts p args  = do
+  answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p args
+  flip traverse answers $ \l -> do
+     traverse (throwError . VarInQueryResults . snd) l
+
+runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m QueryResults
 runQuery facts p args  = do
   answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \l -> do
      traverse (throwError . VarInQueryResults . snd) l
 
-runQuery' :: MonadIO m => [Fact] -> Query -> PDP m [Fact]
+runQuery' :: MonadIO m => [Fact] -> Query -> PDP m QueryResults
 runQuery' facts (Lit (Pred p _) as) = runQuery facts p as
 
 queryPretty :: MonadIO m => [Fact] -> Text -> [Term TextVar] -> PDP m ()
