@@ -17,11 +17,14 @@ import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
 
 import Test.Hspec
-import Test.QuickCheck
+import Test.QuickCheck (arbitrary, generate)
 
-shouldSucceed, shouldFail :: (HasCallStack, Show a) => IO [a] -> Expectation
-shouldSucceed io = io >>= (`shouldNotSatisfy` null)
-shouldFail    io = io >>= (`shouldSatisfy`    null)
+shouldSucceed, shouldFail, shouldNotTimeout :: (HasCallStack) => IO TestResult -> Expectation
+shouldSucceed io    = io >>= (`shouldSatisfy` isSuccess)
+  where isSuccess (Success _) = True
+        isSuccess _           = False
+shouldFail    io    = io `shouldReturn` Failure
+shouldNotTimeout io = io `shouldNotReturn` Timeout
 
 exampleDir :: FilePath
 exampleDir = "test/examples"
@@ -57,21 +60,28 @@ testDb = Db testRulesDb testNativeDb
 timeoutSecs :: Int -> IO a -> IO (Maybe a)
 timeoutSecs n = timeout $ n * 10 ^ (6 :: Int)
 
-queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO [Lit EVar]
+-- | TODO: Push this back into 'runAvaleryarT' or 'runM'...
+data TestResult = Success [Lit EVar] | Failure | Timeout
+  deriving (Eq, Ord, Read, Show)
+
+testResult :: Maybe [Lit EVar] -> TestResult
+testResult Nothing   = Timeout
+testResult (Just []) = Failure
+testResult (Just ss) = Success ss
+
+queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO TestResult
 queryRules q rs = do
   let rdb = insertRuleAssertion "qq" rm mempty
       rm = compileRules . fmap (fmap unRawVar) $ rs
       go = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "qq" q
 
-  Just res <- timeoutSecs 1 go
-  pure res
+  testResult <$> timeoutSecs 1 go
 
-queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO [Lit EVar]
+queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO TestResult
 queryFile p q = do
   Right rs <- parseFile p (Just $ const "system")
   let rdb = insertRuleAssertion "system" rm mempty
       rm  = compileRules . fmap (fmap unRawVar) $ rs
       go  = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q
 
-  Just res <- timeoutSecs 1 go
-  pure res
+  testResult <$> timeoutSecs 1 go
