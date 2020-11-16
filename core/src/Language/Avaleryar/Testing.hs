@@ -21,7 +21,7 @@
 --     coexist in a file and yet more or less ignoring the rules that appear in "test files", so to
 --     speak.
 --
---   * Something isn't quite right about the whole 'TestResults' and 'putResults' stack.
+--   * Something isn't quite right about the whole 'TestResults' and 'putTestResults' stack.
 --
 --   * We don't aggregate test results---would be nice to do percentages and make it more obvious
 --     when one amongst a large pile of tests has failed for better UX.
@@ -47,8 +47,8 @@ module Language.Avaleryar.Testing
   , runTestFile
   , withTestHandle
   , withTestHandle_
-  , prettyResults
-  , putResults
+  , prettyTestResults
+  , putTestResults
   ) where
 
 import           Data.Bool                    (bool)
@@ -140,13 +140,13 @@ instance Pretty TestResult where
 instance Pretty TestError where
   pretty (MissingAssertions as) = "assertions missing: " <> (hsep . punctuate "," $ fmap pretty as)
 
-prettyResults :: Text -> TestResults -> Doc
-prettyResults tn rs = pretty tn <> nest 2 prs
+prettyTestResults :: Text -> TestResults -> Doc
+prettyTestResults tn rs = pretty tn <> nest 2 prs
   where prs       = either pretty ((line<>) . vsep . fmap pr) $ rs
         pr (q, r) = fillBreak 30 (pretty q <> colon) <+> pretty r
 
-putResults :: Text -> TestResults -> IO ()
-putResults tn rs = putDoc $ prettyResults tn rs <> line
+putTestResults :: Text -> TestResults -> IO ()
+putTestResults tn rs = putDoc $ prettyTestResults tn rs <> line
 
 runTest :: PDPHandle -> Test IO -> IO TestResults
 runTest hdl t = go (missingAssertions t)
