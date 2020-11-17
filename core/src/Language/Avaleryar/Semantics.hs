@@ -66,11 +66,12 @@ import           Control.Monad.Except
 import           Control.Monad.Fail
 import           Control.Monad.State
 import           Data.Foldable
-import           Data.Map             (Map)
-import qualified Data.Map             as Map
+import           Data.Map                     (Map)
+import qualified Data.Map                     as Map
 import           Data.String
-import           Data.Text            (Text, pack)
-import           Data.Void            (vacuous)
+import           Data.Text                    (Text, pack)
+import           Data.Void                    (vacuous)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep)
 
 import Control.Monad.FBackTrackT
 
@@ -86,6 +87,10 @@ data NativePred m = NativePred
 -- | Regular 'Rule' assertions may be named by any 'Value'.
 newtype RulesDb  m = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> AvaleryarT m ())) }
   deriving (Semigroup, Monoid)
+
+instance Pretty (RulesDb m) where
+  pretty (RulesDb as) = vsep . fmap go $ Map.toList as
+    where go (assn, pm) = prettyAssertion assn $ Map.keys pm
 
 -- | Native predicates are lexically restricted, so 'NativeDb's are keyed on 'Text' rather than
 -- 'Value'.
@@ -151,7 +156,7 @@ lookupEVar ev = do
 -- | As 'lookupEVar', using the current value of the 'Epoch' counter in the runtime state.
 lookupVar :: Monad m => TextVar -> AvaleryarT m (Term EVar)
 lookupVar v = do
-  ev <- (,) <$> gets epoch <*> pure v
+  ev <- EVar <$> gets epoch <*> pure v
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
@@ -207,7 +212,7 @@ compilePred :: (Monad m) => [Rule TextVar] -> Lit EVar -> AvaleryarT m ()
 compilePred rules (Lit _ qas) = do
   rt@RT {..} <- get
   put rt {epoch = succ epoch}
-  let rules' = fmap (epoch,) <$> rules
+  let rules' = fmap (EVar epoch) <$> rules
       go (Rule (Lit _ has) body) = do
         unifyArgs has qas
         traverse_ resolve body
@@ -218,7 +223,7 @@ compileRules :: (Monad m) => [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT 
 compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
 
 compileQuery :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
-compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (-1,)) args))
+compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
