@@ -52,8 +52,11 @@ submitText h assn text facts = modifyWithPDPHandle h $ PDP.submitText assn text 
 unsafeSubmitText :: PDPHandle -> Text -> Text -> IO (Either PDPError ())
 unsafeSubmitText h assn text = modifyWithPDPHandle h $ PDP.unsafeSubmitText assn text
 
-runQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError [Fact])
+runQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError QueryResults)
 runQuery h facts p args = withPDPHandle h $ PDP.runQuery facts p args
+
+runDetailedQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError DetailedQueryResults)
+runDetailedQuery h facts p args = withPDPHandle h $ PDP.runDetailedQuery facts p args
 
 checkQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError Bool)
 checkQuery h facts p args = runQuery h facts p args >>= pure . fmap (not . null)

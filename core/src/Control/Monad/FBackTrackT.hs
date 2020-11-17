@@ -22,6 +22,7 @@ module Control.Monad.FBackTrackT
   ( Stream
   , yield
   , runM
+  , runM'
   , observe
   , SG
   , MonadYield(..)
@@ -99,14 +100,17 @@ instance MonadState s m => MonadState s (Stream m) where
 -- specified number of answers. The monad `m' may be strict (like IO),
 -- so we can't count on the laziness of the `[a]'
 runM :: Monad m => Maybe Int -> Maybe Int -> Stream m a -> m [a]
-runM _ (Just 0)  _ = return [] -- out of breath
-runM d b         m = unStream m >>= runM' d b
-runM' _ _   Nil                 = return []
-runM' _ _ (One a)               = return [a]
-runM' d b (Choice a r)          = do t <- runM d (liftM pred b) r; return (a:t)
-runM' (Just 0) _ (Incomplete r) = return [] -- exhausted depth
-runM' d b (Incomplete r)        = runM (liftM pred d) b r
+runM d b s = runM' d b s >>= \(_, _, as) -> pure as
 
+-- Amended 2020/11/16: returns the remaining fuel in addition to the results.
+runM' :: Monad m => Maybe Int -> Maybe Int -> Stream m a -> m (Maybe Int, Maybe Int, [a])
+runM' d b@(Just 0)  _ = return (d, b, []) -- out of breath
+runM' d b         m = unStream m >>= go d b
+  where go d b   Nil                 = return (d, b, [])
+        go d b (One a)               = return (d, b, [a])
+        go d b (Choice a r)          = do (d', b', t) <- runM' d (liftM pred b) r; return (d', b', a:t)
+        go d@(Just 0) b (Incomplete r) = return (d, b, []) -- exhausted depth
+        go d b (Incomplete r)        = runM' (liftM pred d) b r
 
 -- Don't try the following with the regular List monad or List comprehension!
 -- That would diverge instantly: all `i', `j', and `k' are infinite

@@ -85,10 +85,10 @@ spec = do
                                  [rls| palindrome(?x) :- :prim says rev(?x, ?x). |]
 
     it "turns lists into multiple successes" $ do
-      Success answers <- queryRules [qry| bar(?rows) |]
-                                   [rls| foo("a\nb\nc").
-                                         bar(?rows) :- foo(?text),
-                                         :prim says lines(?text, ?rows). |]
+      Result (Success answers) <- queryRules [qry| bar(?rows) |]
+                                             [rls| foo("a\nb\nc").
+                                                   bar(?rows) :- foo(?text),
+                                                   :prim says lines(?text, ?rows). |]
       answers `shouldMatchList` [ Lit (Pred "bar" 1) [Val "a"]
                                 , Lit (Pred "bar" 1) [Val "b"]
                                 , Lit (Pred "bar" 1) [Val "c"] ]
@@ -101,7 +101,7 @@ spec = do
 
 
     it "works on all the things (Int -> IO [(Int, Bool)])" $ do
-      Success answers <- queryRules [qry| go(?b, ?x, 5) |]
-                                   [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
+      Result (Success answers) <- queryRules [qry| go(?b, ?x, 5) |]
+                                             [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
       length answers `shouldBe` 5
 

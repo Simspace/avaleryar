@@ -21,7 +21,7 @@
 --     coexist in a file and yet more or less ignoring the rules that appear in "test files", so to
 --     speak.
 --
---   * Something isn't quite right about the whole 'TestResults' and 'putResults' stack.
+--   * Something isn't quite right about the whole 'TestResults' and 'putTestResults' stack.
 --
 --   * We don't aggregate test results---would be nice to do percentages and make it more obvious
 --     when one amongst a large pile of tests has failed for better UX.
@@ -47,8 +47,8 @@ module Language.Avaleryar.Testing
   , runTestFile
   , withTestHandle
   , withTestHandle_
-  , prettyResults
-  , putResults
+  , prettyTestResults
+  , putTestResults
   ) where
 
 import           Data.Bool                    (bool)
@@ -124,7 +124,7 @@ missingAssertions (Test tc (rs, ndb)) = unalias . filter (`notElem` assns) $ (fs
         unalias = foldMap (toList . flip lookup (testAssns tc))
 
 -- TODO: Pretty output for test results.
-data TestResult = Success | Failure | Error PDPError
+data TestResult = Pass | Fail | Error PDPError
   deriving (Eq, Ord, Show)
 
 data TestError = MissingAssertions [Text]
@@ -133,20 +133,20 @@ data TestError = MissingAssertions [Text]
 type TestResults = Either TestError [(Query, TestResult)]
 
 instance Pretty TestResult where
-  pretty Success   = "ok"
-  pretty Failure   = "fail"
+  pretty Pass      = "ok"
+  pretty Fail      = "fail"
   pretty (Error e) = pretty $ show e -- TODO: Suck Less
 
 instance Pretty TestError where
   pretty (MissingAssertions as) = "assertions missing: " <> (hsep . punctuate "," $ fmap pretty as)
 
-prettyResults :: Text -> TestResults -> Doc
-prettyResults tn rs = pretty tn <> nest 2 prs
+prettyTestResults :: Text -> TestResults -> Doc
+prettyTestResults tn rs = pretty tn <> nest 2 prs
   where prs       = either pretty ((line<>) . vsep . fmap pr) $ rs
         pr (q, r) = fillBreak 30 (pretty q <> colon) <+> pretty r
 
-putResults :: Text -> TestResults -> IO ()
-putResults tn rs = putDoc $ prettyResults tn rs <> line
+putTestResults :: Text -> TestResults -> IO ()
+putTestResults tn rs = putDoc $ prettyTestResults tn rs <> line
 
 runTest :: PDPHandle -> Test IO -> IO TestResults
 runTest hdl t = go (missingAssertions t)
@@ -156,7 +156,7 @@ runTest hdl t = go (missingAssertions t)
 
 runTestQuery :: PDPHandle -> [Fact] -> Query -> IO TestResult
 runTestQuery hdl app (Lit (Pred p _) as) = resultify <$> checkQuery hdl app p as
-  where resultify = either Error (bool Failure Success)
+  where resultify = either Error (bool Fail Pass)
 
 runTestQuery' :: PDPHandle -> [Fact] -> Query -> IO (Query, TestResult)
 runTestQuery' hdl app q = (q,) <$> runTestQuery hdl app q
