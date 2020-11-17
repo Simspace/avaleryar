@@ -1,53 +1,14 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE FlexibleContexts     #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE TypeApplications     #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Language.Avaleryar.PrettyPrinter where
 
-import           Data.Char                    (isSpace)
-import qualified Data.Map                     as Map
 import           Data.Foldable
 import qualified Data.Text                    as T
+import           Debug.Trace                  (trace, traceM)
 import           Text.PrettyPrint.Leijen.Text
 
-import Language.Avaleryar.Semantics (RulesDb(..))
-import Language.Avaleryar.Syntax hiding (lit)
-
-instance Pretty Pred where
-  pretty (Pred p n) = pretty p <> "/" <> pretty n
-
-instance Pretty v => Pretty (Term v) where
-  pretty (Var v) = "?" <> pretty v
-  pretty (Val c) = pretty c
-
-instance Pretty v => Pretty (Lit v) where
-  pretty (Lit (Pred p _) as) = pretty p <> parens (hsep . punctuate "," $ fmap pretty as)
-
-instance Pretty v => Pretty (ARef v) where
-  pretty (ARTerm t)   = pretty t
-  pretty (ARNative n) = colon <> pretty n
-  pretty ARCurrent    = mempty
-
-instance Pretty v => Pretty (BodyLit v) where
-  pretty (ARCurrent `Says` l) = pretty l
-  pretty (aref      `Says` l) = pretty aref <> space <> "says" <> space <> pretty l
-
-instance Pretty v => Pretty (Rule v) where
-  pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line
-    where bodyDoc [] = empty
-          bodyDoc _  = space <> ":-"
-                    <> group (nest 2 (line <> (vsep . punctuate "," $ fmap pretty body)))
-
-instance Pretty Value where
-  pretty (I n) = pretty n
-  pretty (B b) = if b then "#t" else "#f"
-  pretty (T t) = if T.any isSpace t
-                 then pretty (show t) -- want the quotes/escaping
-                 else pretty t        -- display as a symbol
-
-instance Pretty RawVar where
-  pretty = pretty . unRawVar
+import Language.Avaleryar.Semantics (RulesDb)
+import Language.Avaleryar.Syntax
 
 putQuery :: Lit TextVar -> IO ()
 putQuery = putDoc . pretty
@@ -61,11 +22,8 @@ putRulesDb = putDoc . pretty
 putAssertion :: Value -> [Pred] -> IO ()
 putAssertion assn ps = putDoc $ prettyAssertion assn ps
 
-prettyAssertion :: Value -> [Pred] -> Doc
-prettyAssertion assn ps = pretty assn
-                       <> ": "
-                       <> group (nest 2 (line <> (vsep . fmap pretty $ ps)))
+traceP :: Pretty a => a -> b -> b
+traceP = trace . T.unpack . displayTStrict . renderOneLine . pretty
 
-instance Pretty (RulesDb m) where
-  pretty (RulesDb as) = vsep . fmap go $ Map.toList as
-    where go (assn, pm) = prettyAssertion assn $ Map.keys pm
+traceMP :: (Pretty a, Applicative f) => a -> f ()
+traceMP = traceM . T.unpack . displayTStrict . renderOneLine . pretty
