@@ -55,7 +55,7 @@ timestamps {
                          /* Build haskell binaries */
                          sh '''
                              # no -Werror until ghc 8.8 is on everywhere
-                             stack test avaleryar avaleryar-extras avaleryar-repl --ghc-options='-Wall' --fast
+                             stack test avaleryar avaleryar-repl --ghc-options='-Wall' --fast
                          '''
                         }
                     }

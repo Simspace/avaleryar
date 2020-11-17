@@ -29,8 +29,9 @@ import Language.Avaleryar.Parser
 import Language.Avaleryar.PDP           (PDPConfig, demoNativeDb, pdpConfig)
 import Language.Avaleryar.PDP.Handle
 import Language.Avaleryar.PrettyPrinter
+import Language.Avaleryar.Semantics     (DetailedResults(..), DetailedQueryResults)
 import Language.Avaleryar.Syntax
-import Language.Avaleryar.Testing       (runTestFile, putResults, TestResults)
+import Language.Avaleryar.Testing       (runTestFile, putTestResults, TestResults)
 
 -- | Spin up a repl using the given 'PDPConfig', configuring its underlying 'PDPHandle' with a
 -- callback.
@@ -50,7 +51,7 @@ main = do
   Args {..}  <- execParser (info parseArgs mempty)
   Right conf <- pdpConfig demoNativeDb systemAssn
   let loadAssns h = for_ otherAssns $ either (error . show) pure <=< unsafeSubmitFile h Nothing
-      displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putResults)
+      displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putTestResults)
   if   null testFiles
   then replWithHandle conf loadAssns
   else runTestFiles conf loadAssns testFiles >>= displayResults
@@ -90,11 +91,17 @@ cmd q = do
   facts  <- liftIO $ readIORef appFacts
   case parsed of
     Left err -> liftIO $ putStrLn err
-    Right (Lit (Pred p _) args) -> liftIO (runQuery handle facts p args) >>= \case
-      Left err -> liftIO . putStrLn $ show err
-      Right answers -> if   null answers
-                      then liftIO $ putStrLn "no."
-                      else liftIO $ putFacts answers
+    Right (Lit (Pred p _) args) ->
+      liftIO (runDetailedQuery handle facts p args) >>= either (liftIO . putStrLn . show) putAnswers
+
+-- | TODO: repl options a la ghci's @+t@.
+putAnswers :: MonadIO m => DetailedQueryResults -> m ()
+putAnswers DetailedResults {..} = liftIO $ putResults results *> putStats
+  where putResults [] = putStrLn "no."
+        putResults rs = putFacts rs
+        putStats      = putStrLn $ "(" <> depthUsage <> " fuel, " <> breadthUsage <> " answers)"
+        depthUsage    = show (initialDepth   - remainingDepth)   <> "/" <> show initialDepth
+        breadthUsage  = show (initialBreadth - remainingBreadth) <> "/" <> show initialBreadth
 
 banner :: Repl String
 banner = pure "-? "
