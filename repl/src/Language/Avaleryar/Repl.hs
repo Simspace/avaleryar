@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE LiberalTypeSynonyms #-}
 {-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
@@ -10,35 +11,81 @@ module Language.Avaleryar.Repl where
 
 import           Control.Applicative
 import           Control.Monad.Reader
-import           Control.Monad.State.Strict
 import           Data.Containers.ListUtils    (nubOrd)
 import           Data.Foldable
 import           Data.IORef
 import           Data.List                    (isPrefixOf)
 import qualified Data.Map                     as Map
 import           Data.String
-import           Data.Text                    (unpack)
-import           Options.Applicative
-import           System.Console.Haskeline     (MonadException(..))
-import           System.Console.Repline       as RL
+import           Data.Text                    (unpack, Text)
+import           Options.Applicative          as Opts
+import           System.Console.Repline       as RL hiding (banner, options)
 import           System.IO.Unsafe
 import           System.ReadEditor            (readEditorWith)
 import           Text.PrettyPrint.Leijen.Text (Pretty, pretty)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Language.Avaleryar.Parser
-import Language.Avaleryar.PDP           (demoConfig)
+import Language.Avaleryar.PDP           (PDPConfig, demoNativeDb, pdpConfig)
 import Language.Avaleryar.PDP.Handle
 import Language.Avaleryar.PrettyPrinter
 import Language.Avaleryar.Syntax
+import Language.Avaleryar.Testing       (runTestFile, putResults, TestResults)
+
+-- | Spin up a repl using the given 'PDPConfig', configuring its underlying 'PDPHandle' with a
+-- callback.
+replWithHandle :: PDPConfig IO -> (PDPHandle -> IO ()) -> IO ()
+replWithHandle conf k = do
+  let complete = Prefix (wordCompleter byWord) commandMatcher
+  handle <- newHandle conf
+  k handle
+  runReaderT (evalRepl banner cmd options commandChar complete ini) handle
+
+-- | As 'replWithHandle', doing no additional configuration.
+repl :: PDPConfig IO -> IO ()
+repl conf = replWithHandle conf mempty
+
+main :: IO ()
+main = do
+  Args {..}  <- execParser (info parseArgs mempty)
+  Right conf <- pdpConfig demoNativeDb systemAssn
+  let loadAssns h = for_ otherAssns $ either (error . show) pure <=< unsafeSubmitFile h Nothing
+      displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putResults)
+  if   null testFiles
+  then replWithHandle conf loadAssns
+  else runTestFiles conf loadAssns testFiles >>= displayResults
+
+runTestFiles :: PDPConfig IO -> (PDPHandle -> IO ()) -> [FilePath] -> IO [Either String [(Text, TestResults)]]
+runTestFiles conf k = traverse (runTestFile conf k)
+
+data Args = Args
+  { systemAssn :: FilePath
+  , testFiles  :: [FilePath]
+  , otherAssns :: [FilePath]
+  } deriving (Eq, Show)
+
+parseArgs :: Opts.Parser Args
+parseArgs = Args <$> saParser <*> tfParser <*> oaParser
+  where saParser = strOption $ fold saMods
+        saMods   = [short 's'
+                   , long "system"
+                   , value "system.ava"
+                   , showDefault
+                   , help "file containing the system assertion"]
+        tfParser = many . strOption $ fold tfMods
+        tfMods   = [short 't'
+                   , long "test"
+                   , help "files containing tests to run"]
+        oaParser = many . strArgument $ fold oaMods
+        oaMods   = [help "assertions to load (will be named after their filename)"]
 
 
--- type Repl a = HaskelineT (ReaderT (PDPHandle IO) IO) a
+
 type Repl a = HaskelineT (ReaderT PDPHandle IO) a
 
 cmd :: Command Repl
-cmd qry = do
-  let parsed = parseQuery "<interactive>" (fromString qry)
+cmd q = do
+  let parsed = parseQuery "<interactive>" (fromString q)
   handle <- ask
   facts  <- liftIO $ readIORef appFacts
   case parsed of
@@ -82,10 +129,10 @@ dump assns = do
 app :: [String] -> Repl ()
 app _ = do
   currentFacts <- liftIO $ readIORef appFacts
-  let header = "\n\n;; facts written above will be added to the 'application' assertion"
-      body   = unlines . fmap (prettyString @(Rule TextVar) . factToRule) $ currentFacts
+  let hdr  = "\n\n;; facts written above will be added to the 'application' assertion"
+      body = unlines . fmap (prettyString @(Rule TextVar) . factToRule) $ currentFacts
 
-  newSource <- liftIO $ readEditorWith (header <> "\n\n" <> body)
+  newSource <- liftIO $ readEditorWith (hdr <> "\n\n" <> body)
 
   let parsed = parseFacts (fromString newSource)
 
@@ -123,8 +170,3 @@ ini = liftIO $ putStrLn "Avaleryar!"
 commandChar :: Maybe Char
 commandChar = Just ':'
 
-main :: IO ()
-main = do
-  Right conf <- demoConfig
-  handle <- newHandle conf
-  flip runReaderT handle $ evalRepl banner cmd options commandChar (Prefix (wordCompleter byWord) commandMatcher) ini

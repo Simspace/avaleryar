@@ -13,7 +13,6 @@ import           Data.Text               (Text)
 
 import           Language.Avaleryar.PDP           (PDP(..), PDPConfig(..), PDPError)
 import qualified Language.Avaleryar.PDP           as PDP
-import           Language.Avaleryar.PrettyPrinter (putRulesDb)
 import           Language.Avaleryar.Semantics
 import           Language.Avaleryar.Syntax
 

@@ -16,7 +16,7 @@
 -- is not at all similar to the trick described in Ralf Hinze's ICFP'00 paper,
 -- Deriving backtracking monad transformers.
 
--- $Id: FBackTrackT.hs,v 1.1.0.1 2005/10/31 22:34:25 oleg Exp oleg $
+-- Haddock doesn't like @-- $Id@: $Id: FBackTrackT.hs,v 1.1.0.1 2005/10/31 22:34:25 oleg Exp oleg $
 
 module Control.Monad.FBackTrackT
   ( Stream
@@ -80,7 +80,7 @@ instance Monad m => MonadPlus (Stream m) where
         One b        -> return $ Choice b i
         Choice b r'  -> return $ Choice b (mplus i r')
         -- Choice _ _ -> Incomplete (mplus r' i)
-        Incomplete j -> return $ Incomplete (mplus i j)
+        Incomplete j -> return . Incomplete . yield $ mplus i j
 
 instance Monad m => Fail.MonadFail (Stream m) where
   fail _ = mzero
@@ -183,7 +183,7 @@ type SG = Stream
 -- Hinze's `observe' -- the opposite of `lift'
 --	observe . lift == id
 
-observe :: Monad m => Stream m a -> m a
+observe :: MonadFail m => Stream m a -> m a
 observe m = unStream m >>= pick1
   where pick1 Nil            = fail "no anwers"
         pick1 (One a)        = return a

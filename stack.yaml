@@ -1,8 +1,8 @@
-resolver: lts-13.19
+resolver: lts-15.5
 packages:
   - ./core
   - ./extras
   - ./repl
 extra-deps:
-  - qq-literals-0.1.0.0
+  - qq-literals-0.1.0.1
   - jsonpath-0.1.0.1

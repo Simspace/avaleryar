@@ -4,6 +4,8 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
 
 {-|
@@ -39,9 +41,10 @@ name of the assertion in which @may\/1@ is defined).  In brief:
 
 module Language.Avaleryar.Syntax where
 
-import Data.Map    (Map)
+import Data.Functor.Const (Const(..))
+import Data.Map           (Map)
 import Data.String
-import Data.Text   (Text)
+import Data.Text          (Text)
 import Data.Void
 
 data Value
@@ -96,6 +99,13 @@ fact pn = lit pn . fmap val
 -- | 'Fact's are vacuously 'Rule's.
 factToRule :: Fact -> Rule v
 factToRule fct = Rule (vacuous fct) []
+
+-- | 'Directive's provide a side-channel for metadata to pass from assertion authors into an
+-- implementation.  They're intended to be extracted at parse time, and are /never/ considered
+-- during evaluation.  However, an intermediate processor might use information from a directive to
+-- manipulate code /before/ it's loaded into the system and evaluated.  The motivating use cases for
+-- directives are to declare test-suites and (eventually) mode declarations.
+data Directive = Directive Fact [Fact] deriving (Eq, Ord, Show)
 
 -- | To ensure freshness, tag runtime variables ('EVar's) with the current value of an 'Epoch'
 -- counter which we bump every time we allocate a new variable.
@@ -154,6 +164,12 @@ instance Valuable Bool where
   toValue = B
   fromValue (B a) = Just a
   fromValue _     = Nothing
+
+deriving instance Valuable a => Valuable (Const a (b :: k))
+
+fromTerm :: Valuable a => Term v -> Maybe a
+fromTerm (Val x) = fromValue x
+fromTerm _       = Nothing
 
 -- | Construct a 'Term' from anything 'Valuable'.
 val :: Valuable a => a -> Term v

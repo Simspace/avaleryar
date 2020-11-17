@@ -1,0 +1,65 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 303ca43cd2b62bd8d25be353c47a11a9a00b4aa4d8394dac6cf5fe38bb1d4f3b
+
+name:           avaleryar
+version:        0.0.1
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+
+library
+  exposed-modules:
+      Control.Monad.FBackTrackT
+      Language.Avaleryar
+      Language.Avaleryar.ModeCheck
+      Language.Avaleryar.Parser
+      Language.Avaleryar.PDP
+      Language.Avaleryar.PDP.Handle
+      Language.Avaleryar.PrettyPrinter
+      Language.Avaleryar.Semantics
+      Language.Avaleryar.Syntax
+      Language.Avaleryar.Testing
+  other-modules:
+      Paths_avaleryar
+  hs-source-dirs:
+      src
+  build-depends:
+      base
+    , containers
+    , filepath
+    , megaparsec
+    , mtl
+    , qq-literals
+    , template-haskell
+    , text
+    , wl-pprint-text
+  default-language: Haskell2010
+
+test-suite avaleryar-tests
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Fixtures
+      ModeCheckSpec
+      ParserSpec
+      SemanticsSpec
+      Paths_avaleryar
+  hs-source-dirs:
+      test
+  build-depends:
+      HUnit
+    , QuickCheck
+    , avaleryar
+    , base
+    , containers
+    , directory
+    , filepath
+    , hspec
+    , hspec-core
+    , text
+  default-language: Haskell2010

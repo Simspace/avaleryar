@@ -9,14 +9,13 @@ module Language.Avaleryar.Native.Base
   ) where
 
 import Control.Monad.IO.Class
-import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Data.Time.Format (parseTimeM, defaultTimeLocale)
 import Data.Text (Text, unpack, toLower, toUpper, strip)
 import qualified Data.Text as Text
 
 import Language.Avaleryar.Semantics (mkNativeDb, mkNativePred, Solely(..), NativeDb)
-import Language.Avaleryar.Syntax (Value(..), Valuable(..))
+import Language.Avaleryar.Syntax (Value(..))
 
 db :: MonadIO m => NativeDb m
 db = mkNativeDb "base" [ mkNativePred "lt"  $ (<) @Value

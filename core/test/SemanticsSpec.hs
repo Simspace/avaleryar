@@ -17,22 +17,21 @@ import Test.Hspec
 spec :: Spec
 spec = do
   describe "infinite loops" $ do
-    it "don't run forever" $ do
-      let go = runAvalaryarT 5000 1 testDb q
-          q  = compileQuery "system" "loop" [Var "x"]
-      timeoutSecs 4 go `shouldReturn` Just []
+    it "don't run forever on a simple loop" $ do
+      shouldNotTimeout $ queryFile (exampleFile "loops.ava") [qry| loop1(?z) |]
+
+    it "don't run forever on a less simple loop" $ do
+      shouldNotTimeout $ queryFile (exampleFile "loops.ava") [qry| loop2(?z) |]
 
     it "have limited output" $ do
       Just answers <- timeoutSecs 1 $ runAvalaryarT 5000 10 testDb (msum . replicate 74 $ pure ())
       length answers `shouldBe` 10
 
     it "demonstrate fair conjunction" $ do
-      answers <- queryFile (exampleFile "fair-conjunction.ava") [qry| a(?x) |]
-      answers `shouldNotSatisfy` null
+      shouldSucceed $ queryFile (exampleFile "fair-conjunction.ava") [qry| a(?x) |]
 
     it "demonstrate fair disjunction" $ do
-      answers <- queryFile (exampleFile "fair-disjunction.ava") [qry| a(?x) |]
-      answers `shouldNotSatisfy` null
+      shouldSucceed $ queryFile (exampleFile "fair-disjunction.ava") [qry| a(?x) |]
 
     -- TODO: This is slow for some reason, to the tune of 2 seconds in ghcid
     it "finds paths" $ do
@@ -86,10 +85,10 @@ spec = do
                                  [rls| palindrome(?x) :- :prim says rev(?x, ?x). |]
 
     it "turns lists into multiple successes" $ do
-      answers <- queryRules [qry| bar(?rows) |]
-                           [rls| foo("a\nb\nc").
-                                 bar(?rows) :- foo(?text),
-                                 :prim says lines(?text, ?rows). |]
+      Success answers <- queryRules [qry| bar(?rows) |]
+                                   [rls| foo("a\nb\nc").
+                                         bar(?rows) :- foo(?text),
+                                         :prim says lines(?text, ?rows). |]
       answers `shouldMatchList` [ Lit (Pred "bar" 1) [Val "a"]
                                 , Lit (Pred "bar" 1) [Val "b"]
                                 , Lit (Pred "bar" 1) [Val "c"] ]
@@ -102,7 +101,7 @@ spec = do
 
 
     it "works on all the things (Int -> IO [(Int, Bool)])" $ do
-      answers <- queryRules [qry| go(?b, ?x, 5) |]
-                           [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
+      Success answers <- queryRules [qry| go(?b, ?x, 5) |]
+                                   [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
       length answers `shouldBe` 5
 

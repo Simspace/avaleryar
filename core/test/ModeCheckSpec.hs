@@ -7,7 +7,6 @@ module ModeCheckSpec where
 
 import Control.Monad
 import Data.Coerce
-import Data.Either
 import Data.Foldable
 import Data.Text        (Text, unpack)
 import System.Directory
@@ -15,7 +14,6 @@ import System.FilePath
 
 import Language.Avaleryar.ModeCheck
 import Language.Avaleryar.Parser
-import Language.Avaleryar.PrettyPrinter
 import Language.Avaleryar.Syntax
 
 import Fixtures
@@ -32,7 +30,7 @@ wellModed rules = case testModeCheck rules of
                     Right !()   -> pure ()
 
 illModed rules = case testModeCheck rules of
-                    Left  !err -> pure ()
+                    Left  !_   -> pure ()
                     Right !()   -> expectationFailure "no mode error reported"
 
 
@@ -44,7 +42,7 @@ spec = do
       parsed <- traverse (parseFile . exampleFile) files
       when (null files) $ expectationFailure ("no .ava files in example directory: " <> exampleDir)
       for_ parsed $ \case
-         Right parsed -> wellModed parsed
+         Right p      -> wellModed p
          Left  err    -> expectationFailure err
 
     it "complains about ill-moded, non-native rules" $ do

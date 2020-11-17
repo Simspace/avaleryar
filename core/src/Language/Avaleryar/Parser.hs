@@ -5,6 +5,7 @@
 module Language.Avaleryar.Parser
   ( -- * Parsers
     parseFile
+  , parseFile'
   , parseFactFile
   , parseFacts
   , parseQuery
@@ -17,6 +18,8 @@ module Language.Avaleryar.Parser
 
 import           Control.Monad              (void)
 import           Data.Bifunctor             (first)
+import           Data.Either                (partitionEithers)
+import           Data.String
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Text.IO               as T
@@ -28,8 +31,6 @@ import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Language.Avaleryar.Syntax hiding (lit, fact)
-
--- data ParserSettings = ParserSettings { currentAssertionName :: Value }
 
 type Parser = Parsec Void Text
 
@@ -54,7 +55,7 @@ parens = between (symbol "(") (symbol ")")
 -- I'm stealing ':' for myself, might take more later
 symInit, symCont :: Parser Char
 symInit = letterChar <|> oneOf ("!@$%&*/<=>~_^" :: String)
-symCont = symInit <|> digitChar <|> oneOf (".+-?" :: String)
+symCont = symInit <|> digitChar <|> oneOf ("+-?" :: String)
 
 stringLiteral :: Parser Text
 stringLiteral = T.pack <$> (char '"' *> manyTill L.charLiteral (char '"'))
@@ -81,7 +82,7 @@ term =  Var <$> var <|> Val <$> lexeme value
 lit :: Parser (Lit RawVar)
 lit = label "literal" $ do
   ftor <- ident
-  args <- parens (term `sepBy` comma)
+  args <- concat <$> optional (parens (term `sepBy` comma))
   pure $ Lit (Pred ftor (length args)) args
 
 -- | A specialized version of 'lit' that fails faster for facts.  Like 'rule' and unlike 'lit',
@@ -91,6 +92,13 @@ fact = label "fact" $ do
   ftor <- ident
   args <- fmap Val <$> parens (value `sepBy` comma)
   dot
+  pure $ Lit (Pred ftor (length args)) args
+
+-- | Like 'fact', but without the trailing 'dot'.  FIXME: Suck less.
+fact' :: Parser Fact
+fact' = label "fact" $ do
+  ftor <- ident
+  args <- fmap Val <$> parens (value `sepBy` comma)
   pure $ Lit (Pred ftor (length args)) args
 
 aref :: Parser (ARef RawVar)
@@ -108,16 +116,32 @@ rule = Rule <$> lit <*> (body <|> dot *> pure [])
         bodyLits = bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
-ruleFile :: Parser [Rule RawVar]
-ruleFile = ws *> many rule
+directive :: Parser Directive
+directive = do
+  void $ symbol ":-"
+  label "directive" $
+    Directive <$> fact' <*> fact' `sepBy` comma <* dot
+
+-- ruleFile :: Parser [Rule RawVar]
+-- ruleFile = ws *> many rule
 
 factFile :: Parser [Fact]
 factFile = ws *> many fact
 
-parseFile :: FilePath -> IO (Either String [Rule RawVar])
-parseFile path = do
+-- FIXME: Suck less
+ruleFile' :: Parser ([Directive], [Rule RawVar])
+ruleFile' = ws *> (partitionEithers <$> many (fmap Left directive <|> fmap Right rule))
+
+parseFile' :: FilePath -> IO (Either String ([Directive], [Rule RawVar]))
+parseFile' path = do
   file <- T.readFile path
-  pure . first errorBundlePretty $ parse ruleFile path file
+  pure . first errorBundlePretty $ parse ruleFile' path file
+
+parseText' :: Text -> Text -> Either String ([Directive], [Rule RawVar])
+parseText' assn = first errorBundlePretty . parse ruleFile' (T.unpack assn)
+
+parseFile :: FilePath -> IO (Either String [Rule RawVar])
+parseFile path = fmap snd <$> parseFile' path
 
 parseFactFile :: FilePath -> IO (Either String [Fact])
 parseFactFile path = do
@@ -128,14 +152,14 @@ parseFacts :: Text -> Either String [Fact]
 parseFacts src = first errorBundlePretty $ parse factFile "" src
 
 parseText :: Text -> Text -> Either String [Rule RawVar]
-parseText assn = first errorBundlePretty . parse ruleFile (T.unpack assn)
+parseText assn src = snd <$> parseText' assn src
 
 parseQuery :: Text -> Text -> Either String Query
 parseQuery assn = first errorBundlePretty . parse go (T.unpack assn)
   where go = ws *> fmap (fmap unRawVar) lit
 
-testParseFile :: FilePath -> IO (Either String [Rule RawVar])
-testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
+-- testParseFile :: FilePath -> IO (Either String [Rule RawVar])
+-- testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
 
 rulesQQParser :: String -> Either String [Rule RawVar]
 rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
@@ -158,3 +182,4 @@ qry = qqLiteral queryQQParser 'queryQQParser
 
 fct :: QuasiQuoter
 fct = qqLiteral factQQParser 'factQQParser
+

@@ -80,7 +80,7 @@ runAvaWith f ma = do
   -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
   rdb            <- insertRuleAssertion "system" systemAssertion . f <$> getRulesDb
   lift $ runAvalaryarT maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
-                                             -- ^ is this exactly what I just said not to do?
+  -- is this exactly what I just said not to do ^ ?
 
 checkRules :: Monad m => [Rule TextVar] -> PDP m ()
 checkRules rules = do
@@ -166,6 +166,13 @@ pdpConfigText db text = do
   sys <- first ParseError . coerce $ parseText "system" text
   first ModeError $ modeCheck (nativeModes db) sys
   pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
+
+pdpConfigRules :: MonadIO m => NativeDb m -> [Rule TextVar] -> Either PDPError (PDPConfig m)
+pdpConfigRules db rules = do
+  sys <- pure $ coerce rules
+  first ModeError $ modeCheck (nativeModes db) sys
+  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
+
 
 demoNativeDb :: MonadIO m => NativeDb m
 demoNativeDb = mkNativeDb "base" preds

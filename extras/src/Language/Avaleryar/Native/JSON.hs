@@ -14,15 +14,14 @@ module Language.Avaleryar.Native.JSON
 
 import           Control.Applicative
 import           Control.Monad.Except
-import           Data.Aeson                 (FromJSON, fromJSON)
+import           Data.Aeson                 (fromJSON)
 import qualified Data.Aeson                 as Aeson
-import qualified Data.Attoparsec.ByteString as AB
 import qualified Data.Attoparsec.Text       as AT
 import           Data.Bifunctor             (first)
 import           Data.Foldable              (toList)
 import           Data.JSONPath
-import           Data.Text                  (Text, pack, unpack)
-import           Data.Text.Encoding         (decodeUtf8, encodeUtf8)
+import           Data.Text                  (Text)
+import           Data.Text.Encoding         (encodeUtf8)
 import           GHC.Generics               (Generic)
 import qualified Jose.Jwa                   as Jwt
 import           Jose.Jwk
@@ -30,8 +29,8 @@ import           Jose.Jwt                   hiding (decode)
 import qualified Jose.Jwt                   as Jwt
 
 import Language.Avaleryar.Instances ()
-import Language.Avaleryar.Semantics (NativeDb(..), Solely(..), mkNativeDb, mkNativePred)
-import Language.Avaleryar.Syntax    (Lit(..), Pred(..), Term(..), Value(..))
+import Language.Avaleryar.Semantics (NativeDb(..), mkNativeDb, mkNativePred)
+import Language.Avaleryar.Syntax    (Value(..))
 
 runJsonPath :: Text -> Aeson.Value -> Either String [Value]
 runJsonPath path val = do
@@ -56,7 +55,7 @@ unsecuredJwtConfig = JwtConfig [] (Just $ JwsEncoding Jwt.None)
 securedJwtContent :: JwtContent -> Either String Aeson.Value
 securedJwtContent (Jws (_, bs))  = Aeson.eitherDecodeStrict bs
 securedJwtContent (Jwe (_, bs))  = Aeson.eitherDecodeStrict bs
-securedJwtContent (Unsecured bs) = Left "content is unsecured"
+securedJwtContent (Unsecured _)  = Left "content is unsecured"
 
 -- | Extracts the 'Unsecured' content from a 'JwtContent'.
 unsecuredJwtContent :: JwtContent -> Either String Aeson.Value
@@ -69,8 +68,8 @@ allJwtContent :: JwtContent -> Either String Aeson.Value
 allJwtContent content = unsecuredJwtContent content <|> securedJwtContent content
 
 claims :: (JwtContent -> Either String Aeson.Value) -> JwtConfig -> Text -> Text -> IO [Value]
-claims extractor (JwtConfig keys encoding) json path = do
-  content <- Jwt.decode keys encoding (encodeUtf8 json)
+claims extractor (JwtConfig ks encoding) json path = do
+  content <- Jwt.decode ks encoding (encodeUtf8 json)
   pure $ toList (first show content >>= extractor) >>= runJsonPath' path -- TODO: Suck less
 
 -- | Underlying implementation of the @unsecured-claim@ predicate.
