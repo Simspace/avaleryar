@@ -130,13 +130,13 @@ runDetailedQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m Detaile
 runDetailedQuery facts p args  = do
   answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \l -> do
-     traverse (throwError . VarInQueryResults . snd) l
+     traverse (throwError . VarInQueryResults . unEVar) l
 
 runQuery :: Monad m => [Fact] -> Text -> [Term TextVar] -> PDP m QueryResults
 runQuery facts p args  = do
   answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \l -> do
-     traverse (throwError . VarInQueryResults . snd) l
+     traverse (throwError . VarInQueryResults . unEVar) l
 
 runQuery' :: MonadIO m => [Fact] -> Query -> PDP m QueryResults
 runQuery' facts (Lit (Pred p _) as) = runQuery facts p as
