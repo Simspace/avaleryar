@@ -16,7 +16,7 @@ putQuery = putDoc . pretty
 putFacts :: Foldable t => t Fact -> IO ()
 putFacts = traverse_ (putDoc . pretty . factToRule @TextVar)
 
-putRulesDb :: RulesDb m -> IO ()
+putRulesDb :: RulesDb -> IO ()
 putRulesDb = putDoc . pretty
 
 putAssertion :: Value -> [Pred] -> IO ()
