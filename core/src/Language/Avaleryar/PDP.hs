@@ -20,9 +20,9 @@ import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import           Data.Typeable                (Typeable)
 import           System.FilePath              (stripExtension)
-import           Text.PrettyPrint.Leijen.Text (pretty, putDoc)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..), putDoc, squotes)
 
-import Language.Avaleryar.ModeCheck     (modeCheck)
+import Language.Avaleryar.ModeCheck     (ModeError, modeCheck)
 import Language.Avaleryar.Parser        (parseFile, parseText, qry)
 import Language.Avaleryar.PrettyPrinter ()
 import Language.Avaleryar.Semantics
@@ -44,7 +44,7 @@ instance MonadTrans PDP where
   lift = PDP . lift . lift . lift
 
 data PDPError
-  = ModeError Text
+  = ModeError ModeError
   | VarInQueryResults TextVar
   | ParseError String
   | SubmitError SubmitError
@@ -52,10 +52,20 @@ data PDPError
 
 instance Exception PDPError
 
+instance Pretty PDPError where
+  pretty (ModeError e)         = pretty e
+  pretty (VarInQueryResults v) = "got variable " <> squotes (pretty v) <> " in query results"
+  pretty (ParseError e)        = pretty e
+  pretty (SubmitError e)       = pretty e
+
 data SubmitError
   = SubmissionDisabled
   | SubmissionDenied
     deriving (Eq, Ord, Read, Show)
+
+instance Pretty SubmitError where
+  pretty SubmissionDisabled = "submission disabled"
+  pretty SubmissionDenied   = "submission denied"
 
 runPDP :: MonadIO m => PDP m a -> PDPConfig m -> m (Either PDPError a)
 runPDP (PDP ma) = flip evalStateT mempty . runExceptT . runReaderT ma
@@ -85,7 +95,7 @@ runDetailedWith f ma = do
   lift $ runAvalaryarT' maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
   -- is this exactly what I just said not to do  ^ ?
 
-checkRules :: Monad m => [Rule TextVar] -> PDP m ()
+checkRules :: Monad m => [Rule RawVar] -> PDP m ()
 checkRules rules = do
   nm <- asksConfig (fmap (fmap nativeSig) . unNativeDb . nativeAssertions) -- TODO: Suck less
   either (throwError . ModeError) pure $ modeCheck nm rules
@@ -97,7 +107,7 @@ checkSubmit facts = asksConfig submitQuery >>= \case
       answers <- runQuery' facts q
       when (null answers) $ throwError (SubmitError SubmissionDenied)
 
-submitAssertion :: MonadIO m => Text -> [Rule TextVar] -> [Fact] -> PDP m ()
+submitAssertion :: MonadIO m => Text -> [Rule RawVar] -> [Fact] -> PDP m ()
 submitAssertion assn rules facts = checkSubmit facts >> unsafeSubmitAssertion assn rules
 
 submitText :: MonadIO m => Text -> Text -> [Fact] -> PDP m ()
@@ -107,10 +117,10 @@ submitFile :: MonadIO m => Maybe String -> FilePath -> [Fact] -> PDP m ()
 submitFile assn path facts = checkSubmit facts >> unsafeSubmitFile assn path
 
 -- | unsafe because there's no authz on the submission
-unsafeSubmitAssertion :: Monad m => Text -> [Rule TextVar] -> PDP m ()
+unsafeSubmitAssertion :: Monad m => Text -> [Rule RawVar] -> PDP m ()
 unsafeSubmitAssertion assn rules = do
   checkRules rules
-  modifyRulesDb $ insertRuleAssertion assn (compileRules assn rules)
+  modifyRulesDb $ insertRuleAssertion assn (compileRules assn $ fmap (fmap unRawVar) rules)
 
 
 -- | TODO: ergonomics, protect "system", etc.
@@ -168,19 +178,18 @@ pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfi
 pdpConfig db fp = runExceptT $ do
   sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
 
 pdpConfigText :: MonadIO m => NativeDb m -> Text -> Either PDPError (PDPConfig m)
 pdpConfigText db text = do
   sys <- first ParseError . coerce $ parseText "system" text
   first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
 
-pdpConfigRules :: MonadIO m => NativeDb m -> [Rule TextVar] -> Either PDPError (PDPConfig m)
-pdpConfigRules db rules = do
-  sys <- pure $ coerce rules
+pdpConfigRules :: MonadIO m => NativeDb m -> [Rule RawVar] -> Either PDPError (PDPConfig m)
+pdpConfigRules db sys = do
   first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
 
 
 demoNativeDb :: MonadIO m => NativeDb m

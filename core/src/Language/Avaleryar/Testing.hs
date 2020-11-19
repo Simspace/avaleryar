@@ -76,7 +76,7 @@ data Test m = Test
   , testDb   :: TestDb m
   }
 
-type TestDb m = ([(Text, [Rule TextVar])], NativeDb m)
+type TestDb m = ([(Text, [Rule RawVar])], NativeDb m)
 
 parseTestAssertion :: Term a -> Maybe (Text, Text)
 parseTestAssertion t = fromTerm t >>= go . splitOn "="

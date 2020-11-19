@@ -31,10 +31,10 @@ modifyWithPDPHandle (PDPHandle c mv) (PDP ma) = liftIO . modifyMVar mv $ \rdb ->
   (a, rdb') <- flip runStateT rdb . runExceptT $ runReaderT ma c
   pure (rdb', a)
 
-submitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> [Fact] -> IO (Either PDPError ())
+submitAssertion :: PDPHandle -> Text -> [Rule RawVar] -> [Fact] -> IO (Either PDPError ())
 submitAssertion h assn rules facts = modifyWithPDPHandle h $ PDP.submitAssertion assn rules facts
 
-unsafeSubmitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> IO (Either PDPError ())
+unsafeSubmitAssertion :: PDPHandle -> Text -> [Rule RawVar] -> IO (Either PDPError ())
 unsafeSubmitAssertion h assn rules = modifyWithPDPHandle h $ PDP.unsafeSubmitAssertion assn rules
 
 retractAssertion :: PDPHandle -> Text -> IO (Either PDPError ())

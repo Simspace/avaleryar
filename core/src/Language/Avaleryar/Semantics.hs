@@ -294,10 +294,10 @@ retractRuleAssertion assn = RulesDb . Map.delete (T assn) . unRulesDb
 
 ---------------------
 
-inMode :: Mode TextVar
+inMode :: Mode RawVar
 inMode = In "+"
 
-outMode :: Mode TextVar
+outMode :: Mode RawVar
 outMode = Out "-"
 
 -- | Typeclass machinery for easing the creation of native predicates.  The idea is to do our best
@@ -312,7 +312,7 @@ class ToNative a where
 
   -- | Probably this should be 'outMode' for each argument expected in the list of 'Term's in
   -- 'toNative'.
-  inferMode :: [Mode TextVar]
+  inferMode :: [Mode RawVar]
 
 instance ToNative Value where
   toNative v args = unifyArgs [val v] args
