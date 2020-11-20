@@ -34,11 +34,11 @@ exampleDir = "test/examples"
 exampleFile :: FilePath -> FilePath
 exampleFile fp = exampleDir </> fp
 
-testRulesDb :: RulesDb IO
+testRulesDb :: RulesDb
 testRulesDb = insertRuleAssertion "system" rm mempty
   where rm = compileRules "system" . fmap (fmap unRawVar) $ [rls| loop(?x) :- loop(?x). |]
 
-testNativeDb :: NativeDb IO
+testNativeDb :: NativeDb
 testNativeDb = mkNativeDb "prim" preds
   where preds = [ mkNativePred "not=" $ (/=) @Value -- lift bool to pred on 'Value'
                 , mkNativePred "even" $ even @Int  -- lift bool to pred on 'Valuable Int'
@@ -56,7 +56,7 @@ testNativeDb = mkNativeDb "prim" preds
 testNativeModes :: Map Text (Map Pred ModedLit)
 testNativeModes = fmap (fmap nativeSig) . unNativeDb $ testNativeDb
 
-testDb :: Db IO
+testDb :: Db
 testDb = Db testRulesDb testNativeDb
 
 timeoutSecs :: Int -> IO a -> IO (Maybe a)

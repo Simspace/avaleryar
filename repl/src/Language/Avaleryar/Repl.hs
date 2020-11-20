@@ -37,7 +37,7 @@ import Language.Avaleryar.Testing       (runTestFile, putTestResults, TestResult
 
 -- | Spin up a repl using the given 'PDPConfig', configuring its underlying 'PDPHandle' with a
 -- callback.
-replWithHandle :: PDPConfig IO -> (PDPHandle -> IO ()) -> IO ()
+replWithHandle :: PDPConfig -> (PDPHandle -> IO ()) -> IO ()
 replWithHandle conf k = do
   let complete = Prefix (wordCompleter byWord) commandMatcher
   handle <- newHandle conf
@@ -45,7 +45,7 @@ replWithHandle conf k = do
   runReaderT (evalRepl banner cmd options commandChar complete ini) handle
 
 -- | As 'replWithHandle', doing no additional configuration.
-repl :: PDPConfig IO -> IO ()
+repl :: PDPConfig -> IO ()
 repl conf = replWithHandle conf mempty
 
 main :: IO ()
@@ -58,7 +58,7 @@ main = do
   then replWithHandle conf loadAssns
   else runTestFiles conf loadAssns testFiles >>= displayResults
 
-runTestFiles :: PDPConfig IO -> (PDPHandle -> IO ()) -> [FilePath] -> IO [Either String [(Text, TestResults)]]
+runTestFiles :: PDPConfig -> (PDPHandle -> IO ()) -> [FilePath] -> IO [Either String [(Text, TestResults)]]
 runTestFiles conf k = traverse (runTestFile conf k)
 
 data Args = Args

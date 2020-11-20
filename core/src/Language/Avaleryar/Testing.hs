@@ -71,12 +71,12 @@ data TestCase = TestCase
   , testQueries :: [Query]
   } deriving (Eq, Ord, Show)
 
-data Test m = Test
+data Test = Test
   { testCase :: TestCase
-  , testDb   :: TestDb m
+  , testDb   :: TestDb
   }
 
-type TestDb m = ([(Text, [Rule RawVar])], NativeDb m)
+type TestDb = ([(Text, [Rule RawVar])], NativeDb)
 
 parseTestAssertion :: Term a -> Maybe (Text, Text)
 parseTestAssertion t = fromTerm t >>= go . splitOn "="
@@ -92,7 +92,7 @@ parseTestCase (Directive (Lit (Pred "test" _) (tn:dbs)) tqs) = do
   pure TestCase {..}
 parseTestCase _ = Nothing
 
-parseDb :: Monad m => (Text, Text) -> Directive -> Maybe (TestDb m)
+parseDb :: (Text, Text) -> Directive -> Maybe TestDb
 parseDb (alias, assn) (Directive (Lit (Pred "db" _) [Val (T dbn)]) fs) | assn == dbn =
   Just ([(alias, fmap factToRule fs)], mempty)
 parseDb (alias, assn) (Directive (Lit (Pred "native" _) [Val (T dbn)]) fs) | assn == dbn =
@@ -104,12 +104,12 @@ parseDb _ _ = Nothing
 -- grouping pass.
 --
 -- TODO: The fake mode might be too strong, in which case we'd need some other plan?
-factsToNative :: Monad m => [Fact] -> [NativePred m]
+factsToNative :: [Fact] -> [NativePred]
 factsToNative fs = [NativePred (compilePred rs) (modeFor p) | (p, rs) <- Map.toList preds]
   where preds = Map.fromListWith (<>) [(p, [factToRule f]) | f@(Lit p _) <- fs]
         modeFor p@(Pred _ n) = Lit p (replicate n (Var outMode))
 
-dbForTestCase :: Monad m => [Directive] -> TestCase -> TestDb m
+dbForTestCase :: [Directive] -> TestCase -> TestDb
 dbForTestCase dirs TestCase {..} = foldMap go testAssns
   where go p = maybe mempty id $ foldMap (parseDb p) dirs
 
@@ -118,7 +118,7 @@ dbForTestCase dirs TestCase {..} = foldMap go testAssns
 -- FIXME: The implementation is pretty terrible and non-intuitive---we have to invert the aliasing
 -- we did in 'parseDb' to find the names of the missing assertions.  I think it may still be a tad
 -- busted, but I'm moving on for now.
-missingAssertions :: Test m -> [Text]
+missingAssertions :: Test -> [Text]
 missingAssertions (Test tc (rs, ndb)) = unalias . filter (`notElem` assns) $ (fst <$> testAssns tc)
   where assns   = fmap fst rs <> (Map.keys . unNativeDb $ ndb)
         unalias = foldMap (toList . flip lookup (testAssns tc))
@@ -148,7 +148,7 @@ prettyTestResults tn rs = pretty tn <> nest 2 prs
 putTestResults :: Text -> TestResults -> IO ()
 putTestResults tn rs = putDoc $ prettyTestResults tn rs <> line
 
-runTest :: PDPHandle -> Test IO -> IO TestResults
+runTest :: PDPHandle -> Test -> IO TestResults
 runTest hdl t = go (missingAssertions t)
   where app   = appAssertion t
         go [] = fmap Right . traverse (runTestQuery' hdl app) . testQueries . testCase $ t
@@ -164,12 +164,12 @@ runTestQuery' hdl app q = (q,) <$> runTestQuery hdl app q
 -- | Sneakily smash the given DB of native assertions over the entries in the 'PDPConfig'.  This
 -- leans on the whole left-biased map-union thing to let the tests using this override whatever was
 -- there before, when it can.
-insinuateNativeDb :: NativeDb m -> PDPConfig m -> PDPConfig m
+insinuateNativeDb :: NativeDb -> PDPConfig -> PDPConfig
 insinuateNativeDb ndb conf@PDPConfig {..} = conf {nativeAssertions = ndb `go` nativeAssertions}
   where go (NativeDb n) (NativeDb nas) = NativeDb $ Map.unionWith (<>) n nas
 
 -- Remember the callback is for adding more assertions.
-withTestHandle :: PDPConfig IO -> (PDPHandle -> IO a) -> Test IO -> IO (TestResults, a)
+withTestHandle :: PDPConfig -> (PDPHandle -> IO a) -> Test -> IO (TestResults, a)
 withTestHandle conf k t@(Test _ (assns, ndb)) = do
   hdl <- newHandle $ insinuateNativeDb ndb conf
   for_ assns $ uncurry (unsafeSubmitAssertion hdl)
@@ -177,10 +177,10 @@ withTestHandle conf k t@(Test _ (assns, ndb)) = do
   results <- runTest hdl t
   pure (results, a)
 
-withTestHandle_ :: PDPConfig IO -> (PDPHandle -> IO ()) -> Test IO -> IO TestResults
+withTestHandle_ :: PDPConfig -> (PDPHandle -> IO ()) -> Test -> IO TestResults
 withTestHandle_ p k t = fst <$> withTestHandle p k t
 
-extractTests :: Monad m => [Directive] -> [Test m]
+extractTests :: [Directive] -> [Test]
 extractTests dirs = go <$> cases
   where cases = foldMap (toList . parseTestCase) dirs
         go tc = Test tc $ dbForTestCase dirs tc
@@ -194,13 +194,13 @@ ruleToFact _ = error "body lits in rule coerced to fact---insanity!"
 
 -- | Construct an @application@ assertion to provide along with the test queries by picking the
 -- first assertion in the 'testDb' with the name (or, well alias) @application@.
-appAssertion :: Test m -> [Fact]
+appAssertion :: Test -> [Fact]
 appAssertion = fmap ruleToFact . concat . lookup "application" . fst . testDb
 
-parseTestFile :: Monad m => FilePath -> IO (Either String [Test m])
+parseTestFile :: FilePath -> IO (Either String [Test])
 parseTestFile fp = fmap (extractTests . fst) <$> parseFile' fp
 
-runTestFile :: PDPConfig IO -> (PDPHandle -> IO ()) -> FilePath -> IO (Either String [(Text, TestResults)])
+runTestFile :: PDPConfig -> (PDPHandle -> IO ()) -> FilePath -> IO (Either String [(Text, TestResults)])
 runTestFile conf k tf = do
   let gatherResults t@Test {..} = (testName testCase,) <$> withTestHandle_ conf k t
   parsed <- parseTestFile tf

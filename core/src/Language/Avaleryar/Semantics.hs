@@ -14,7 +14,7 @@
 {-|
 
 Evaluation proceeds pretty much like in the Soutei paper.  Computations are performed in the
-'AvaleryarT m' monad, which is built up from the paper's backtracking monad and maintains the
+'Avaleryar' monad, which is built up from the paper's backtracking monad and maintains the
 runtime state ('RT').  The latter consists of the current variable substitution, an 'Epoch' counter
 for a supply of guaranteed-fresh variables, and a database of predicates 'Db'.
 
@@ -82,34 +82,34 @@ import Language.Avaleryar.Syntax
 
 -- | A native predicate carries not just its evaluation function, but also its signature, so it may
 -- be consulted when new assertions are submitted in order to mode-check them.
-data NativePred m = NativePred
-  { nativePred :: Lit EVar -> AvaleryarT m ()
+data NativePred = NativePred
+  { nativePred :: Lit EVar -> Avaleryar ()
   , nativeSig  :: ModedLit
   }
 
 -- | Regular 'Rule' assertions may be named by any 'Value'.
-newtype RulesDb  m = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> AvaleryarT m ())) }
+newtype RulesDb = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> Avaleryar ())) }
   deriving (Semigroup, Monoid)
 
-instance Pretty (RulesDb m) where
+instance Pretty RulesDb where
   pretty (RulesDb as) = vsep . fmap go $ Map.toList as
     where go (assn, pm) = prettyAssertion assn $ Map.keys pm
 
 -- | Native predicates are lexically restricted, so 'NativeDb's are keyed on 'Text' rather than
 -- 'Value'.
-newtype NativeDb m = NativeDb { unNativeDb :: Map Text (Map Pred (NativePred m)) }
+newtype NativeDb = NativeDb { unNativeDb :: Map Text (Map Pred NativePred) }
   deriving (Semigroup, Monoid)
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
-data Db m = Db
-  { rulesDb  :: RulesDb  m
-  , nativeDb :: NativeDb m
+data Db = Db
+  { rulesDb  :: RulesDb
+  , nativeDb :: NativeDb
   }
 
-instance Semigroup (Db m) where
+instance Semigroup Db where
   Db rdb ndb <> Db rdb' ndb' = Db (rdb <> rdb') (ndb <> ndb')
 
-instance Monoid (Db m) where
+instance Monoid Db where
   mempty = Db mempty mempty
   mappend = (<>)
 
@@ -119,18 +119,18 @@ alookup k m = maybe empty pure $ Map.lookup k m
 
 -- | Look up a the 'Pred' in the assertion denoted by the given 'Value', and return the code to
 -- execute it.
-loadRule :: (Monad m) => Value -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
+loadRule :: Value -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
 loadRule c p = getsRT (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
 -- | As 'loadRule' for native predicates.
-loadNative :: Monad m => Text -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
+loadNative :: Text -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
 loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
 
 -- | Runtime state for 'AvaleryarT' computations.
-data RT m = RT
+data RT = RT
   { env   :: Env   -- ^ The accumulated substitution
   , epoch :: Epoch -- ^ A counter for generating fresh variables
-  , db    :: Db m  -- ^ The database of compiled predicates
+  , db    :: Db    -- ^ The database of compiled predicates
   }
 
 -- | Allegedly more-detailed results from an 'AvalerlyarT' computation.  Probably will include
@@ -160,7 +160,7 @@ type DetailedQueryResults = DetailedResults Fact
 
 -- | A fair, backtracking, terminating, stateful monad transformer that does all the work.  This is
 -- 'StateT' over 'Stream', so state changes are undone on backtracking.  This is important.
-newtype AvaleryarT m a = AvaleryarT { unAvaleryarT :: StateT (RT m) (Stream m) a }
+newtype Avaleryar a = AvaleryarT { unAvaleryarT :: StateT RT (Stream IO) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadYield, MonadIO)
 
 -- | Run an 'AvaleryarT' computation.  The first argument is an upper limit on the number of
@@ -168,10 +168,10 @@ newtype AvaleryarT m a = AvaleryarT { unAvaleryarT :: StateT (RT m) (Stream m) a
 -- the number of values the computation may produce before terminating.  Both could be made optional
 -- (unlimited depth, unlimited answers), but that doesn't seem like the point of what we're trying
 -- to do here.
-runAvalaryarT :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m (AvaResults a)
+runAvalaryarT :: Int -> Int -> Db -> Avaleryar a -> IO (AvaResults a)
 runAvalaryarT d b db = fmap avaResults . runAvalaryarT' d b db
 
-runAvalaryarT' :: Monad m => Int -> Int -> Db m -> AvaleryarT m a -> m (DetailedResults a)
+runAvalaryarT' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
 runAvalaryarT' d b db = fmap go
                       . runM' (Just d) (Just b)
                       . flip evalStateT (RT mempty 0 db)
@@ -179,31 +179,31 @@ runAvalaryarT' d b db = fmap go
   where go (Just d', Just b', as) = DetailedResults d b d' b' as
         go _                      = error "runM' gave back Nothings; shouldn't happen"
 
-getRT :: Monad m => AvaleryarT m (RT m)
+getRT :: Avaleryar RT
 getRT = AvaleryarT get
 
-getsRT :: Monad m => (RT m -> a) -> AvaleryarT m a
+getsRT :: (RT -> a) -> Avaleryar a
 getsRT = AvaleryarT . gets
 
-putRT :: Monad m => RT m -> AvaleryarT m ()
+putRT :: RT -> Avaleryar ()
 putRT = AvaleryarT . put
 
 -- | Try to find a binding for the given variable in the current substitution.
 --
 -- NB: The resulting 'Term' may still be a variable.
-lookupEVar :: Monad m => EVar -> AvaleryarT m (Term EVar)
+lookupEVar :: EVar -> Avaleryar (Term EVar)
 lookupEVar ev = do
   RT {..} <- getRT
   alookup ev env
 
 -- | As 'lookupEVar', using the current value of the 'Epoch' counter in the runtime state.
-lookupVar :: Monad m => TextVar -> AvaleryarT m (Term EVar)
+lookupVar :: TextVar -> Avaleryar (Term EVar)
 lookupVar v = do
   ev <- EVar <$> getsRT epoch <*> pure v
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
-unifyTerm :: (Monad m) => Term EVar -> Term EVar -> AvaleryarT m ()
+unifyTerm :: Term EVar -> Term EVar -> Avaleryar ()
 unifyTerm t t' = do
   ts  <- subst t
   ts' <- subst t'
@@ -217,7 +217,7 @@ unifyTerm t t' = do
 -- | Apply the current substitution on the given 'Term'.  This function does path compression: if it
 -- finds a variable, it recurs.  This function does not fail: if there is no binding for the given
 -- variable, it will give it right back.
-subst :: Monad m => Term EVar -> AvaleryarT m (Term EVar)
+subst :: Term EVar -> Avaleryar (Term EVar)
 subst v@(Val _)    = pure v
 subst var@(Var ev) = getsRT env >>= maybe (pure var) subst . Map.lookup ev
 
@@ -225,7 +225,7 @@ type Goal = BodyLit EVar
 
 -- | Analyze the given assertion reference and look up the given predicate to find some code to
 -- execute.
-loadResolver :: (Monad m) => ARef EVar -> Pred -> AvaleryarT m (Lit EVar -> AvaleryarT m ())
+loadResolver :: ARef EVar -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
 loadResolver (ARNative n) p = loadNative n p
 loadResolver (ARTerm   t) p = do
   Val c <- subst t -- mode checking should assure that assertion references are ground by now
@@ -235,7 +235,7 @@ loadResolver ARCurrent    _ = error "found ARCurrent in loadResolver; shouldn't 
 -- | Load the appropriate assertion, and execute the predicate in the goal.  Eagerly substitutes,
 -- which I think might be inefficient, but I also think was tricky to not-do here way back when I
 -- wrote this.
-resolve :: (Monad m) => Goal -> AvaleryarT m (Lit EVar)
+resolve :: Goal -> Avaleryar (Lit EVar)
 resolve (assn `Says` l@(Lit p as)) = do
   resolver <- yield' $ loadResolver assn p
   resolver l
@@ -244,7 +244,7 @@ resolve (assn `Says` l@(Lit p as)) = do
 
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
-unifyArgs :: Monad m => [Term EVar] -> [Term EVar] -> AvaleryarT m ()
+unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar ()
 unifyArgs [] []         = pure ()
 unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
 unifyArgs _ _           = empty
@@ -252,7 +252,7 @@ unifyArgs _ _           = empty
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
-compilePred :: (Monad m) => [Rule TextVar] -> Lit EVar -> AvaleryarT m ()
+compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
 compilePred rules (Lit _ qas) = do
   rt@RT {..} <- getRT
   putRT rt {epoch = succ epoch}
@@ -266,7 +266,7 @@ compilePred rules (Lit _ qas) = do
 --
 -- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
-compileRules :: (Monad m) => Text -> [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT m ())
+compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
 compileRules assn rules =
   fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
                                            | r@(Rule (Lit p _) _) <- rules]
@@ -276,20 +276,20 @@ emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
   where go (ARCurrent `Says` bl) = (ARTerm $ val assn) `Says` bl
         go bl                    = bl
 
-compileQuery :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
+compileQuery :: String -> Text -> [Term TextVar] -> Avaleryar (Lit EVar)
 compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
 -- | TODO: Suck less
-compileQuery' :: Monad m => String -> Query -> AvaleryarT m (Lit EVar)
+compileQuery' :: String -> Query -> Avaleryar (Lit EVar)
 compileQuery' assn (Lit (Pred p _) args) = compileQuery assn p args
 
-insertRuleAssertion :: Text -> Map Pred (Lit EVar -> AvaleryarT m ()) -> RulesDb m -> RulesDb m
+insertRuleAssertion :: Text -> Map Pred (Lit EVar -> Avaleryar ()) -> RulesDb -> RulesDb
 insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
 
-retractRuleAssertion :: Text -> RulesDb m -> RulesDb m
+retractRuleAssertion :: Text -> RulesDb -> RulesDb
 retractRuleAssertion assn = RulesDb . Map.delete (T assn) . unRulesDb
 
 ---------------------
@@ -308,7 +308,7 @@ class ToNative a where
   -- list of 'Term's given.  Usually, the list will only have one value in it, but it can have more
   -- or fewer in the case of e.g., tuples.  Implementations /must/ ground-out every variable in the
   -- list, or the mode-checker will become unsound.
-  toNative :: MonadIO m => a -> [Term EVar] -> AvaleryarT m ()
+  toNative :: a -> [Term EVar] -> Avaleryar ()
 
   -- | Probably this should be 'outMode' for each argument expected in the list of 'Term's in
   -- 'toNative'.
@@ -396,19 +396,19 @@ instance ToNative a => ToNative (IO a) where
   inferMode = inferMode @a
 
 -- | Create a native predicate from a 'ToNative' instance with the given name.
-mkNativePred :: forall a m. (ToNative a, MonadIO m) => Text -> a -> NativePred m
+mkNativePred :: forall a. (ToNative a) => Text -> a -> NativePred
 mkNativePred pn f = NativePred np moded
   where np (Lit _ args) = toNative f args
         modes = inferMode @a
         moded = Lit (Pred pn $ length modes) (Var <$> modes)
 
 -- TODO: Feels like I should be able to do this less manually, maybe?
-mkNativeFact :: (Factual a, MonadIO m) => a -> NativePred m
+mkNativeFact :: (Factual a) => a -> NativePred
 mkNativeFact a = NativePred np $ fmap Out f
   where f@(Lit _ args)   = vacuous $ toFact a
         np (Lit _ args') = unifyArgs args args'
 
 -- | Create a native database with the given assertion name from the given list of native
 -- predicates.
-mkNativeDb :: Monad m => Text -> [NativePred m] -> NativeDb m
+mkNativeDb :: Text -> [NativePred] -> NativeDb
 mkNativeDb assn preds = NativeDb . Map.singleton assn $ Map.fromList [(p, np) | np@(NativePred _ (Lit p _)) <- preds]
