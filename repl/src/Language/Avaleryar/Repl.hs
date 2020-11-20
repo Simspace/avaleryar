@@ -54,6 +54,9 @@ main = do
   conf <- pdpConfig demoNativeDb systemAssn >>= either diePretty pure
   let loadAssns h = for_ otherAssns $ either diePretty pure <=< unsafeSubmitFile h Nothing
       displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putTestResults)
+
+  traverse_ (loadApplication <=< liftIO . readFile) appAssn
+
   if   null testFiles
   then replWithHandle conf loadAssns
   else runTestFiles conf loadAssns testFiles >>= displayResults
@@ -65,10 +68,11 @@ data Args = Args
   { systemAssn :: FilePath
   , testFiles  :: [FilePath]
   , otherAssns :: [FilePath]
+  , appAssn    :: Maybe FilePath
   } deriving (Eq, Show)
 
 parseArgs :: Opts.Parser Args
-parseArgs = Args <$> saParser <*> tfParser <*> oaParser
+parseArgs = Args <$> saParser <*> tfParser <*> oaParser <*> afParser
   where saParser = strOption $ fold saMods
         saMods   = [short 's'
                    , long "system"
@@ -81,6 +85,10 @@ parseArgs = Args <$> saParser <*> tfParser <*> oaParser
                    , help "files containing tests to run"]
         oaParser = many . strArgument $ fold oaMods
         oaMods   = [help "assertions to load (will be named after their filename)"]
+        afParser = optional . strOption $ fold afMods
+        afMods   = [short 'a'
+                   , long "application"
+                   , help "file containing facts for the application assertion"]
 
 
 
@@ -142,11 +150,15 @@ app _ = do
       body = unlines . fmap (prettyString @(Rule TextVar) . factToRule) $ currentFacts
 
   newSource <- liftIO $ readEditorWith (hdr <> "\n\n" <> body)
+  liftIO $ loadApplication newSource
 
-  let parsed = parseFacts (fromString newSource)
+-- | Helper for 'app' and the @-a@ argument.  Takes the string containing (concrete-syntax) facts.
+loadApplication :: String -> IO ()
+loadApplication src = do
+  let parsed = parseFacts (fromString src)
 
-  liftIO $ case parsed of
-    Left err -> putStrLn err
+  case parsed of
+    Left err -> putStrLn err *> putStrLn "failed to load any facts."
     Right [] -> putStrLn "no facts provided, preserving current facts."
     Right fs -> do
       writeIORef appFacts fs
