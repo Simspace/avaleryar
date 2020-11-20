@@ -16,7 +16,7 @@ module Language.Avaleryar.Parser
   , rls
   ) where
 
-import           Control.Monad.Reader
+import           Control.Monad              (void)
 import           Data.Bifunctor             (first)
 import           Data.Either                (partitionEithers)
 import           Data.String
@@ -26,16 +26,13 @@ import qualified Data.Text.IO               as T
 import           Data.Void
 import           Language.Haskell.TH.Quote  (QuasiQuoter)
 import           QQLiterals
-import           System.FilePath            (dropExtension)
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
 import Language.Avaleryar.Syntax hiding (lit, fact)
 
-data ParserSettings = ParserSettings { currentAssertionName :: Value }
-
-type Parser = ReaderT ParserSettings (Parsec Void Text)
+type Parser = Parsec Void Text
 
 -- ws :: (MonadParsec e s m, Token s ~ Char) => m ()
 ws :: Parser ()
@@ -108,7 +105,7 @@ aref :: Parser (ARef RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
 
 currentAssertion :: Parser (ARef RawVar)
-currentAssertion = ARTerm . Val <$> asks currentAssertionName
+currentAssertion = pure ARCurrent
 
 bodyLit :: Parser (BodyLit RawVar)
 bodyLit = Says <$> (try (aref <* symbol "says") <|> currentAssertion) <*> lit
@@ -135,48 +132,46 @@ factFile = ws *> many fact
 ruleFile' :: Parser ([Directive], [Rule RawVar])
 ruleFile' = ws *> (partitionEithers <$> many (fmap Left directive <|> fmap Right rule))
 
-parseFile' :: FilePath -> Maybe (FilePath -> String) -> IO (Either String ([Directive], [Rule RawVar]))
-parseFile' path modAssn = do
-  let assn = fromString . maybe dropExtension ($) modAssn $ path
+parseFile' :: FilePath -> IO (Either String ([Directive], [Rule RawVar]))
+parseFile' path = do
   file <- T.readFile path
-  pure . first errorBundlePretty $ parse (runReaderT ruleFile' (ParserSettings assn)) path file
+  pure . first errorBundlePretty $ parse ruleFile' path file
 
 parseText' :: Text -> Text -> Either String ([Directive], [Rule RawVar])
-parseText' assn = first errorBundlePretty . parse go (T.unpack assn)
-  where go = runReaderT ruleFile' (ParserSettings $ T assn)
+parseText' assn = first errorBundlePretty . parse ruleFile' (T.unpack assn)
 
-parseFile :: FilePath -> Maybe (FilePath -> String) -> IO (Either String [Rule RawVar])
-parseFile path modAssn = fmap snd <$> parseFile' path modAssn
+parseFile :: FilePath -> IO (Either String [Rule RawVar])
+parseFile path = fmap snd <$> parseFile' path
 
 parseFactFile :: FilePath -> IO (Either String [Fact])
 parseFactFile path = do
   file <- T.readFile path
-  pure . first errorBundlePretty $ parse (runReaderT factFile (ParserSettings "application")) path file
+  pure . first errorBundlePretty $ parse factFile path file
 
 parseFacts :: Text -> Either String [Fact]
-parseFacts src = first errorBundlePretty $ parse (runReaderT factFile (ParserSettings "application")) "" src
+parseFacts src = first errorBundlePretty $ parse factFile "" src
 
 parseText :: Text -> Text -> Either String [Rule RawVar]
 parseText assn src = snd <$> parseText' assn src
 
 parseQuery :: Text -> Text -> Either String Query
 parseQuery assn = first errorBundlePretty . parse go (T.unpack assn)
-  where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
+  where go = ws *> fmap (fmap unRawVar) lit
 
 -- testParseFile :: FilePath -> IO (Either String [Rule RawVar])
 -- testParseFile file = T.readFile file >>= pure . parseText (T.pack file)
 
 rulesQQParser :: String -> Either String [Rule RawVar]
 rulesQQParser = first errorBundlePretty . parse go "qq" . T.pack
-  where go = runReaderT (ws *> many rule) (ParserSettings "qq")
+  where go = ws *> many rule
 
 queryQQParser :: String -> Either String Query
 queryQQParser = first errorBundlePretty . parse go "qq" . T.pack
-  where go = runReaderT (ws *> fmap (fmap unRawVar) lit) (ParserSettings "qq")
+  where go = ws *> fmap (fmap unRawVar) lit
 
 factQQParser :: String -> Either String Fact
 factQQParser = first errorBundlePretty . parse go "qq" . T.pack
-  where go = runReaderT (ws *> fmap (fmap $ error "variable in fact") lit) (ParserSettings "qq")
+  where go = ws *> fmap (fmap $ error "variable in fact") lit
 
 
 rls :: QuasiQuoter

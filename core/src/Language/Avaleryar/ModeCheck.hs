@@ -77,6 +77,7 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
             _     -> pure ()
 
           traverse_ ground bas
+        modeCheckBody (ARCurrent `Says` Lit _ bas) = traverse_ ground bas
 
 
         modeCheckArg (Val _)        a     = ground a -- treat constants like in-mode variables

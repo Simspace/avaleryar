@@ -39,7 +39,7 @@ spec = do
   describe "mode checking" $ do
     it "passes for example files" $ do
       files <- filter ((== ".ava") . takeExtension) <$> listDirectory exampleDir
-      parsed <- traverse (flip parseFile Nothing . exampleFile) files
+      parsed <- traverse (parseFile . exampleFile) files
       when (null files) $ expectationFailure ("no .ava files in example directory: " <> exampleDir)
       for_ parsed $ \case
          Right p      -> wellModed p

@@ -110,13 +110,13 @@ submitFile assn path facts = checkSubmit facts >> unsafeSubmitFile assn path
 unsafeSubmitAssertion :: Monad m => Text -> [Rule TextVar] -> PDP m ()
 unsafeSubmitAssertion assn rules = do
   checkRules rules
-  modifyRulesDb $ insertRuleAssertion assn (compileRules rules)
+  modifyRulesDb $ insertRuleAssertion assn (compileRules assn rules)
 
 
 -- | TODO: ergonomics, protect "system", etc.
 unsafeSubmitFile :: MonadIO m => Maybe String -> FilePath -> PDP m ()
 unsafeSubmitFile assn path = do
-  rules <- liftIO $ parseFile path (const <$> assn)
+  rules <- liftIO $ parseFile path
   unsafeSubmitAssertion (pack $ maybe (stripDotAva path) id assn) =<< either (throwError . ParseError) (pure . coerce) rules
 
 unsafeSubmitText :: MonadIO m => Text -> Text -> PDP m ()
@@ -151,7 +151,7 @@ testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
 insertApplicationAssertion :: Monad m => [Fact] -> RulesDb m -> RulesDb m
-insertApplicationAssertion = insertRuleAssertion "application" . compileRules . fmap factToRule
+insertApplicationAssertion = insertRuleAssertion "application" . compileRules "application" . fmap factToRule
 
 nativeModes :: NativeDb m -> Map Text (Map Pred ModedLit)
 nativeModes = fmap (fmap nativeSig) . unNativeDb
@@ -166,21 +166,21 @@ stripPathPrefix pfx path = maybe path id $ stripPrefix pfx path
 -- almost guaranteed to be what you want.
 pdpConfig :: MonadIO m => NativeDb m -> FilePath -> m (Either PDPError (PDPConfig m))
 pdpConfig db fp = runExceptT $ do
-  sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp (Just $ const "system")
+  sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
 
 pdpConfigText :: MonadIO m => NativeDb m -> Text -> Either PDPError (PDPConfig m)
 pdpConfigText db text = do
   sys <- first ParseError . coerce $ parseText "system" text
   first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
 
 pdpConfigRules :: MonadIO m => NativeDb m -> [Rule TextVar] -> Either PDPError (PDPConfig m)
 pdpConfigRules db rules = do
   sys <- pure $ coerce rules
   first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" sys) db Nothing 50 10
 
 
 demoNativeDb :: MonadIO m => NativeDb m

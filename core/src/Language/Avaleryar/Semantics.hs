@@ -230,6 +230,7 @@ loadResolver (ARNative n) p = loadNative n p
 loadResolver (ARTerm   t) p = do
   Val c <- subst t -- mode checking should assure that assertion references are ground by now
   loadRule c p
+loadResolver ARCurrent    _ = error "found ARCurrent in loadResolver; shouldn't be possible"
 
 -- | Load the appropriate assertion, and execute the predicate in the goal.  Eagerly substitutes,
 -- which I think might be inefficient, but I also think was tricky to not-do here way back when I
@@ -262,8 +263,18 @@ compilePred rules (Lit _ qas) = do
   msum $ go <$> rules'
 
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
-compileRules :: (Monad m) => [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT m ())
-compileRules rules = fmap compilePred $ Map.fromListWith (++) [(p, [r]) | r@(Rule (Lit p _) _) <- rules]
+--
+-- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
+-- is somewhat gross, and needs to be reexamined in the fullness of time.
+compileRules :: (Monad m) => Text -> [Rule TextVar] -> Map Pred (Lit EVar -> AvaleryarT m ())
+compileRules assn rules =
+  fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
+                                           | r@(Rule (Lit p _) _) <- rules]
+
+emplaceCurrentAssertion :: Text -> Rule v -> Rule v
+emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
+  where go (ARCurrent `Says` bl) = (ARTerm $ val assn) `Says` bl
+        go bl                    = bl
 
 compileQuery :: (Monad m) => String -> Text -> [Term TextVar] -> AvaleryarT m (Lit EVar)
 compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))

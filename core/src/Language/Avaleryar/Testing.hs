@@ -198,7 +198,7 @@ appAssertion :: Test m -> [Fact]
 appAssertion = fmap ruleToFact . concat . lookup "application" . fst . testDb
 
 parseTestFile :: Monad m => FilePath -> IO (Either String [Test m])
-parseTestFile fp = fmap (extractTests . fst) <$> parseFile' fp Nothing
+parseTestFile fp = fmap (extractTests . fst) <$> parseFile' fp
 
 runTestFile :: PDPConfig IO -> (PDPHandle -> IO ()) -> FilePath -> IO (Either String [(Text, TestResults)])
 runTestFile conf k tf = do

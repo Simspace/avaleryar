@@ -98,7 +98,7 @@ lit pn as = Lit (Pred pn (length as)) as
 
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
-data ARef v = ARNative Text | ARTerm (Term v) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
 
 instance Pretty v => Pretty (ARef v) where
   pretty (ARTerm t)   = pretty t
