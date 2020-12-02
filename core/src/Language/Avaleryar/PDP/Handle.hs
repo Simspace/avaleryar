@@ -16,25 +16,25 @@ import qualified Language.Avaleryar.PDP           as PDP
 import           Language.Avaleryar.Semantics
 import           Language.Avaleryar.Syntax
 
-data PDPHandle = PDPHandle (PDPConfig IO) (MVar (RulesDb IO))
+data PDPHandle = PDPHandle PDPConfig (MVar RulesDb)
 
-newHandle :: PDPConfig IO -> IO PDPHandle
+newHandle :: PDPConfig -> IO PDPHandle
 newHandle c = PDPHandle c <$> newMVar mempty
 
-withPDPHandle :: PDPHandle -> PDP IO a -> IO (Either PDPError a)
+withPDPHandle :: PDPHandle -> PDP a -> IO (Either PDPError a)
 withPDPHandle (PDPHandle c mv) (PDP ma) = do
   rdb <- liftIO $ readMVar mv
   flip evalStateT rdb . runExceptT $ runReaderT ma c
 
-modifyWithPDPHandle :: PDPHandle -> PDP IO a -> IO (Either PDPError a)
+modifyWithPDPHandle :: PDPHandle -> PDP a -> IO (Either PDPError a)
 modifyWithPDPHandle (PDPHandle c mv) (PDP ma) = liftIO . modifyMVar mv $ \rdb -> do
   (a, rdb') <- flip runStateT rdb . runExceptT $ runReaderT ma c
   pure (rdb', a)
 
-submitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> [Fact] -> IO (Either PDPError ())
+submitAssertion :: PDPHandle -> Text -> [Rule RawVar] -> [Fact] -> IO (Either PDPError ())
 submitAssertion h assn rules facts = modifyWithPDPHandle h $ PDP.submitAssertion assn rules facts
 
-unsafeSubmitAssertion :: PDPHandle -> Text -> [Rule TextVar] -> IO (Either PDPError ())
+unsafeSubmitAssertion :: PDPHandle -> Text -> [Rule RawVar] -> IO (Either PDPError ())
 unsafeSubmitAssertion h assn rules = modifyWithPDPHandle h $ PDP.unsafeSubmitAssertion assn rules
 
 retractAssertion :: PDPHandle -> Text -> IO (Either PDPError ())

@@ -20,13 +20,13 @@ import Fixtures
 
 import Test.Hspec
 
-testModeCheck :: HasCallStack => [Rule RawVar] -> Either Text ()
-testModeCheck rules = modeCheck testNativeModes (fmap coerce rules)
+testModeCheck :: HasCallStack => [Rule RawVar] -> Either ModeError ()
+testModeCheck = modeCheck testNativeModes
 
 -- | These are verbose to get more coverage of the error-message generation
 wellModed, illModed :: HasCallStack => [Rule RawVar] -> Expectation
 wellModed rules = case testModeCheck rules of
-                    Left  !err -> expectationFailure $ unpack err
+                    Left  !err -> expectationFailure $ show err
                     Right !()   -> pure ()
 
 illModed rules = case testModeCheck rules of

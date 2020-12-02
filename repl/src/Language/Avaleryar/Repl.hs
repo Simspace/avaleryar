@@ -19,10 +19,12 @@ import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (unpack, Text)
 import           Options.Applicative          as Opts
+import           System.Exit                  (exitFailure)
 import           System.Console.Repline       as RL hiding (banner, options)
+import           System.IO                    (hPutStrLn, stderr)
 import           System.IO.Unsafe
 import           System.ReadEditor            (readEditorWith)
-import           Text.PrettyPrint.Leijen.Text (Pretty, pretty)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..))
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Language.Avaleryar.Parser
@@ -35,7 +37,7 @@ import Language.Avaleryar.Testing       (runTestFile, putTestResults, TestResult
 
 -- | Spin up a repl using the given 'PDPConfig', configuring its underlying 'PDPHandle' with a
 -- callback.
-replWithHandle :: PDPConfig IO -> (PDPHandle -> IO ()) -> IO ()
+replWithHandle :: PDPConfig -> (PDPHandle -> IO ()) -> IO ()
 replWithHandle conf k = do
   let complete = Prefix (wordCompleter byWord) commandMatcher
   handle <- newHandle conf
@@ -43,30 +45,34 @@ replWithHandle conf k = do
   runReaderT (evalRepl banner cmd options commandChar complete ini) handle
 
 -- | As 'replWithHandle', doing no additional configuration.
-repl :: PDPConfig IO -> IO ()
+repl :: PDPConfig -> IO ()
 repl conf = replWithHandle conf mempty
 
 main :: IO ()
 main = do
   Args {..}  <- execParser (info parseArgs mempty)
-  Right conf <- pdpConfig demoNativeDb systemAssn
-  let loadAssns h = for_ otherAssns $ either (error . show) pure <=< unsafeSubmitFile h Nothing
+  conf <- pdpConfig demoNativeDb systemAssn >>= either diePretty pure
+  let loadAssns h = for_ otherAssns $ either diePretty pure <=< unsafeSubmitFile h Nothing
       displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putTestResults)
+
+  traverse_ (loadApplication <=< liftIO . readFile) appAssn
+
   if   null testFiles
   then replWithHandle conf loadAssns
   else runTestFiles conf loadAssns testFiles >>= displayResults
 
-runTestFiles :: PDPConfig IO -> (PDPHandle -> IO ()) -> [FilePath] -> IO [Either String [(Text, TestResults)]]
+runTestFiles :: PDPConfig -> (PDPHandle -> IO ()) -> [FilePath] -> IO [Either String [(Text, TestResults)]]
 runTestFiles conf k = traverse (runTestFile conf k)
 
 data Args = Args
   { systemAssn :: FilePath
   , testFiles  :: [FilePath]
   , otherAssns :: [FilePath]
+  , appAssn    :: Maybe FilePath
   } deriving (Eq, Show)
 
 parseArgs :: Opts.Parser Args
-parseArgs = Args <$> saParser <*> tfParser <*> oaParser
+parseArgs = Args <$> saParser <*> tfParser <*> oaParser <*> afParser
   where saParser = strOption $ fold saMods
         saMods   = [short 's'
                    , long "system"
@@ -79,6 +85,10 @@ parseArgs = Args <$> saParser <*> tfParser <*> oaParser
                    , help "files containing tests to run"]
         oaParser = many . strArgument $ fold oaMods
         oaMods   = [help "assertions to load (will be named after their filename)"]
+        afParser = optional . strOption $ fold afMods
+        afMods   = [short 'a'
+                   , long "application"
+                   , help "file containing facts for the application assertion"]
 
 
 
@@ -140,11 +150,15 @@ app _ = do
       body = unlines . fmap (prettyString @(Rule TextVar) . factToRule) $ currentFacts
 
   newSource <- liftIO $ readEditorWith (hdr <> "\n\n" <> body)
+  liftIO $ loadApplication newSource
 
-  let parsed = parseFacts (fromString newSource)
+-- | Helper for 'app' and the @-a@ argument.  Takes the string containing (concrete-syntax) facts.
+loadApplication :: String -> IO ()
+loadApplication src = do
+  let parsed = parseFacts (fromString src)
 
-  liftIO $ case parsed of
-    Left err -> putStrLn err
+  case parsed of
+    Left err -> putStrLn err *> putStrLn "failed to load any facts."
     Right [] -> putStrLn "no facts provided, preserving current facts."
     Right fs -> do
       writeIORef appFacts fs
@@ -177,3 +191,8 @@ ini = liftIO $ putStrLn "Avaleryar!"
 commandChar :: Maybe Char
 commandChar = Just ':'
 
+diePretty :: (Pretty a, MonadIO m) => a -> m b
+diePretty x = liftIO $ do
+  PP.hPutDoc stderr (pretty x)
+  hPutStrLn stderr ""
+  exitFailure

@@ -44,12 +44,14 @@ name of the assertion in which @may\/1@ is defined).  In brief:
 module Language.Avaleryar.Syntax where
 
 import           Data.Char                    (isSpace)
+import           Data.Function                (on)
 import           Data.Functor.Const           (Const(..))
 import           Data.Map                     (Map)
 import           Data.String
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import           Data.Void
+import           Text.Megaparsec              (SourcePos(..), pos1)
 import           Text.PrettyPrint.Leijen.Text
     (Doc, Pretty(..), brackets, colon, dot, empty, group, hsep, line, nest, parens, punctuate, space, vsep)
 
@@ -103,6 +105,7 @@ data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Rea
 instance Pretty v => Pretty (ARef v) where
   pretty (ARTerm t)   = pretty t
   pretty (ARNative n) = colon <> pretty n
+  pretty ARCurrent    = mempty
 
 prettyAssertion :: Value -> [Pred] -> Doc
 prettyAssertion assn ps = pretty assn
@@ -179,8 +182,17 @@ unEVar :: EVar -> TextVar
 unEVar (EVar _ v) = v
 
 -- | Raw variables are produced by the parser.
-newtype RawVar = RawVar { unRawVar :: Text }
-  deriving (Eq, Ord, Read, Show, IsString)
+data RawVar = RawVar { unRawVar :: Text, rawLoc :: SourcePos }
+  deriving (Read, Show)
+
+instance Eq RawVar where
+  (==) = (==) `on` unRawVar
+
+instance Ord RawVar where
+  compare = compare `on` unRawVar
+
+instance IsString RawVar where
+  fromString s = RawVar (T.pack s) (SourcePos "fromString" pos1 pos1)
 
 instance Pretty RawVar where
   pretty = pretty . unRawVar
@@ -194,7 +206,7 @@ type Env = Map EVar (Term EVar)
 data Mode v = In v | Out v
   deriving (Eq, Ord, Read, Show)
 
-type ModedLit = Lit (Mode TextVar)
+type ModedLit = Lit (Mode RawVar)
 
 -- | Some types may be interpreted as a 'Value'.
 class Valuable a where

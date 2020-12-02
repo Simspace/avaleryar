@@ -9,71 +9,74 @@ import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Bool
 import           Data.Foldable
-import           Data.Map             (Map)
-import qualified Data.Map             as Map
-import           Data.Text            (Text, pack)
+import           Data.Map                     (Map)
+import qualified Data.Map                     as Map
+import           Data.Text                    (Text, pack)
+import           Text.Megaparsec              (sourcePosPretty)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..), colon, space, squotes)
 
 import Language.Avaleryar.Syntax
 
 data ModeEnv = ModeEnv
   { nativeModes  :: Map Text (Map Pred ModedLit)
-  , groundedVars :: [TextVar] }
+  , groundedVars :: [RawVar] }
 
--- TODO: Actually use this type; try pushing mode checking through parsing for pretty errors?
 data ModeError
   = UnboundNativeAssertion Text
   | UnboundNativePredicate Text Pred
-  | FVModeRestricted TextVar TextVar -- first var is the free one; TODO: Suck less
-  | FVInAssertionPosition TextVar
-  | FVInRuleHead TextVar
+  | FVModeRestricted RawVar
+  | FVInAssertionPosition RawVar
+  | FVInRuleHead RawVar
     deriving (Eq, Ord, Read, Show)
 
-newtype ModeCheck m a = ModeCheck { unModeCheck :: ExceptT Text (StateT ModeEnv m) a }
-  deriving (Functor, Applicative, Monad, MonadError Text)
+instance Pretty ModeError where
+  pretty (UnboundNativeAssertion assn)        = "unbound native assertion: " <> squotes (pretty assn)
+  pretty (UnboundNativePredicate assn pred)   =
+    "unbound native predicate: "
+      <> squotes (pretty pred)
+      <> " in assertion "
+      <> squotes (pretty assn)
+  pretty (FVModeRestricted (RawVar v l))      =
+    pretty (sourcePosPretty l) <> colon <> "variable: "
+      <> squotes (pretty v)
+      <> " is free in mode restricted position"
+  pretty (FVInAssertionPosition (RawVar v l)) =
+    pretty (sourcePosPretty l) <> colon <> "variable: "
+      <> squotes (pretty v)
+      <> " appears free in assertion position"
+  pretty (FVInRuleHead (RawVar v l))          =
+    pretty (sourcePosPretty l) <> colon <> "variable "
+      <> squotes (pretty v)
+      <> " appears free in rule head"
 
 
--- | I think I thought I needed this to make it look like we always just pulled the mode of a body
--- literal and checked it directly.  But now it's dead code.  Leaving it here briefly just in case
--- I'm missing something.
-
-{-
-getMode :: Monad m => BodyLit TextVar -> ModeCheck m ModedLit
-getMode (ARTerm _ `Says` lit) = pure . fmap Out $ lit
-getMode (ARNative assn `Says` Lit p _) = ModeCheck $ do
-  amap <- gets nativeModes
-  let missingAssertion = "Unbound native assertion: '" <> assn <> "'"
-      missingPredicate = "Unbound native predicate: '" <> displayPred p <> "' in assertion '" <> assn <> "'"
-  pmap <- maybe (throwError missingAssertion) pure $ Map.lookup assn amap
-  maybe (throwError missingPredicate) pure $ Map.lookup p pmap
--}
+newtype ModeCheck m a = ModeCheck { unModeCheck :: ExceptT ModeError (StateT ModeEnv m) a }
+  deriving (Functor, Applicative, Monad, MonadError ModeError)
 
 getNativeMode :: Monad m => Text -> Pred -> ModeCheck m ModedLit
 getNativeMode assn p = ModeCheck $ do
   amap <- gets nativeModes
-  let missingAssertion = "Unbound native assertion: '" <> assn <> "'"
-      missingPredicate = "Unbound native predicate: '" <> displayPred p <> "' in assertion '" <> assn <> "'"
-  pmap <- maybe (throwError missingAssertion) pure $ Map.lookup assn amap
-  maybe (throwError missingPredicate) pure $ Map.lookup p pmap
+  pmap <- maybe (throwError $ UnboundNativeAssertion assn) pure $ Map.lookup assn amap
+  maybe (throwError $ UnboundNativePredicate assn p) pure $ Map.lookup p pmap
 
 displayPred :: Pred -> Text
 displayPred (Pred f n) = f <> "/" <> (pack . show $ n)
 
-ground :: (Monad m, Foldable f) => f TextVar -> ModeCheck m ()
+ground :: (Monad m, Foldable f) => f RawVar -> ModeCheck m ()
 ground vs = ModeCheck (modify go)
   where go env@ModeEnv {..} = env { groundedVars = toList vs <> groundedVars }
 
-grounded :: Monad m => TextVar -> ModeCheck m Bool
+grounded :: Monad m => RawVar -> ModeCheck m Bool
 grounded v = ModeCheck $ gets (elem v . groundedVars)
 
-modeCheckRule :: Monad m => Rule TextVar -> ModeCheck m ()
+modeCheckRule :: Monad m => Rule RawVar -> ModeCheck m ()
 modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
   where modeCheckBody (ARNative assn `Says` Lit p bas) = do
           Lit _ mas <- getNativeMode assn p
           zipWithM_ modeCheckArg mas bas
         modeCheckBody (ARTerm aref `Says` Lit _ bas) = do
-          let freeAssertion v = "variable '" <> v <> "' is free in assertion position"
           case aref of
-            Var v -> grounded v >>= bool (throwError $ freeAssertion v) (pure ())
+            Var v -> grounded v >>= bool (throwError $ FVInAssertionPosition v) (pure ())
             _     -> pure ()
 
           traverse_ ground bas
@@ -83,15 +86,13 @@ modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
         modeCheckArg (Val _)        a     = ground a -- treat constants like in-mode variables
         modeCheckArg (Var (Out  _)) a     = ground a -- predicates ground in-mode variables
         modeCheckArg (Var (In _)) (Val _) = pure ()
-        modeCheckArg (Var (In o)) (Var v) = do
-          let modeMismatch = "variable '" <> v <> "' is free in mode-restricted position: '" <> o <> "'"
+        modeCheckArg (Var (In _)) (Var v) = do
           isGrounded <- grounded v
-          unless isGrounded $ throwError modeMismatch
+          unless isGrounded $ throwError (FVModeRestricted v)
 
         modeCheckHead = traverse_ $ \v -> do
-          let freeInHead = "variable '" <> v <> "' appears free in rule head"
           isGrounded <- grounded v
-          unless isGrounded $ throwError freeInHead
+          unless isGrounded $ throwError (FVInRuleHead v)
 
-modeCheck :: (Foldable t) => Map Text (Map Pred ModedLit) -> t (Rule TextVar) -> Either Text ()
+modeCheck :: (Foldable t) => Map Text (Map Pred ModedLit) -> t (Rule RawVar) -> Either ModeError ()
 modeCheck native = traverse_ $ flip evalState (ModeEnv native mempty) . runExceptT . unModeCheck . modeCheckRule

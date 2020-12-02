@@ -74,7 +74,9 @@ ident :: Parser Text
 ident = sym <?> "identifer"
 
 var :: Parser RawVar
-var = RawVar <$> (char '?' *> ident) <?> "variable"
+var = do
+  loc <- getSourcePos
+  RawVar <$> (char '?' *> ident) <*> pure loc <?> "variable"
 
 term :: Parser (Term RawVar)
 term =  Var <$> var <|> Val <$> lexeme value
