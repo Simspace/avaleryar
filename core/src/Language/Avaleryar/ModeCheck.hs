@@ -13,7 +13,7 @@ import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
 import           Text.Megaparsec              (sourcePosPretty)
-import           Text.PrettyPrint.Leijen.Text (Pretty(..), colon, space, squotes)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..), colon, squotes)
 
 import Language.Avaleryar.Syntax
 
@@ -31,9 +31,9 @@ data ModeError
 
 instance Pretty ModeError where
   pretty (UnboundNativeAssertion assn)        = "unbound native assertion: " <> squotes (pretty assn)
-  pretty (UnboundNativePredicate assn pred)   =
+  pretty (UnboundNativePredicate assn prd)    =
     "unbound native predicate: "
-      <> squotes (pretty pred)
+      <> squotes (pretty prd)
       <> " in assertion "
       <> squotes (pretty assn)
   pretty (FVModeRestricted (RawVar v l))      =

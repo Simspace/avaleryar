@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 303ca43cd2b62bd8d25be353c47a11a9a00b4aa4d8394dac6cf5fe38bb1d4f3b
+-- hash: 1f6f4e167e3308181b8ebc9d9ff9a936d791f8a4c22f98fdd495d06269d6281d
 
 name:           avaleryar
 version:        0.0.1
@@ -47,6 +47,7 @@ test-suite avaleryar-tests
       Fixtures
       ModeCheckSpec
       ParserSpec
+      PDPSpec
       SemanticsSpec
       Paths_avaleryar
   hs-source-dirs:

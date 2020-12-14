@@ -6,9 +6,7 @@
 module ModeCheckSpec where
 
 import Control.Monad
-import Data.Coerce
 import Data.Foldable
-import Data.Text        (Text, unpack)
 import System.Directory
 import System.FilePath
 

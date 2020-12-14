@@ -222,3 +222,11 @@ modifyRulesDb f = PDP $ modify f
 
 putRulesDb :: RulesDb -> PDP ()
 putRulesDb ndb = modifyRulesDb (const ndb)
+
+withMaxDepth :: Int -> PDP a -> PDP a
+withMaxDepth n = PDP . local go . unPDP
+  where go conf = conf {maxDepth = n}
+
+withMaxAnswers :: Int -> PDP a -> PDP a
+withMaxAnswers n = PDP . local go . unPDP
+  where go conf = conf {maxAnswers = n}

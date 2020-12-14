@@ -66,7 +66,6 @@ module Language.Avaleryar.Semantics where
 
 import           Control.Applicative
 import           Control.Monad.Except
-import           Control.Monad.Fail
 import           Control.Monad.State
 import           Data.Foldable
 import           Data.Map                     (Map)
