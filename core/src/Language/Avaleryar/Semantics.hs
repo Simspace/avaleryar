@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -64,6 +65,7 @@ and ensure well-modedness from the signature @DS@ of all directory service asser
 
 module Language.Avaleryar.Semantics where
 
+import           Control.DeepSeq              (NFData)
 import           Control.Applicative
 import           Control.Monad.Except
 import           Control.Monad.State
@@ -73,6 +75,7 @@ import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
+import           GHC.Generics                 (Generic)
 import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep)
 
 import Control.Monad.FBackTrackT
@@ -84,11 +87,13 @@ import Language.Avaleryar.Syntax
 data NativePred = NativePred
   { nativePred :: Lit EVar -> Avaleryar ()
   , nativeSig  :: ModedLit
-  }
+  } deriving Generic
+
+instance NFData NativePred
 
 -- | Regular 'Rule' assertions may be named by any 'Value'.
 newtype RulesDb = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> Avaleryar ())) }
-  deriving (Semigroup, Monoid)
+  deriving (Semigroup, Monoid, Generic)
 
 instance Pretty RulesDb where
   pretty (RulesDb as) = vsep . fmap go $ Map.toList as
@@ -97,13 +102,15 @@ instance Pretty RulesDb where
 -- | Native predicates are lexically restricted, so 'NativeDb's are keyed on 'Text' rather than
 -- 'Value'.
 newtype NativeDb = NativeDb { unNativeDb :: Map Text (Map Pred NativePred) }
-  deriving (Semigroup, Monoid)
+  deriving (Semigroup, Monoid, Generic)
+
+instance NFData NativeDb
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
 data Db = Db
   { rulesDb  :: RulesDb
   , nativeDb :: NativeDb
-  }
+  } deriving (Generic)
 
 instance Semigroup Db where
   Db rdb ndb <> Db rdb' ndb' = Db (rdb <> rdb') (ndb <> ndb')
@@ -130,7 +137,7 @@ data RT = RT
   { env   :: Env   -- ^ The accumulated substitution
   , epoch :: Epoch -- ^ A counter for generating fresh variables
   , db    :: Db    -- ^ The database of compiled predicates
-  }
+  } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'AvalerlyarT' computation.  Probably will include
 -- (wall-clock) timing information in the future, and perhaps even other stuff.  A more ergonomic
@@ -139,14 +146,14 @@ data DetailedResults a = DetailedResults
   { initialDepth, initialBreadth     :: Int
   , remainingDepth, remainingBreadth :: Int
   , results                          :: [a]
-  } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable)
+  } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
 
 -- | The results of running an 'AvaleryarT' computation.
 data AvaResults a
   = Failure       -- ^ Produced no results
   | FuelExhausted -- ^ Ran out of fuel before producing any results
   | Success [a]   -- ^ Produced some results; may or may not have run out of fuel
-    deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable)
+    deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
 
 avaResults :: DetailedResults a -> AvaResults a
 avaResults DetailedResults {..} = case (remainingDepth, results) of

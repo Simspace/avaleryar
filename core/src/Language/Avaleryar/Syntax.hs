@@ -1,6 +1,7 @@
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -43,6 +44,7 @@ name of the assertion in which @may\/1@ is defined).  In brief:
 
 module Language.Avaleryar.Syntax where
 
+import           Control.DeepSeq              (NFData)
 import           Data.Char                    (isSpace)
 import           Data.Function                (on)
 import           Data.Functor.Const           (Const(..))
@@ -51,6 +53,7 @@ import           Data.String
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import           Data.Void
+import           GHC.Generics                 (Generic)
 import           Text.Megaparsec              (SourcePos(..), pos1)
 import           Text.PrettyPrint.Leijen.Text
     (Doc, Pretty(..), brackets, colon, dot, empty, group, hsep, line, nest, parens, punctuate, space, vsep)
@@ -59,7 +62,9 @@ data Value
   = I Int
   | T Text
   | B Bool
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Read, Show, Generic)
+
+instance NFData Value
 
 instance IsString Value where
   fromString = T . fromString
@@ -72,7 +77,9 @@ instance Pretty Value where
                  else pretty t        -- display as a symbol
 
 -- | A predicate is identified by its name and arity (i.e., the predicate of the literal @foo(bar, ?baz)@ is @foo/2@)
-data Pred = Pred Text Int deriving (Eq, Ord, Read, Show)
+data Pred = Pred Text Int deriving (Eq, Ord, Read, Show, Generic)
+
+instance NFData Pred
 
 instance Pretty Pred where
   pretty (Pred p n) = pretty p <> "/" <> pretty n
@@ -81,7 +88,9 @@ instance Pretty Pred where
 -- provide a bit of safety by keeping us from crossing various streams (e.g., separating runtime
 -- unification variables from raw variables straight out of the parser helps avoid a bit of unwanted
 -- variable capture).
-data Term v = Val Value | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data Term v = Val Value | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+
+instance NFData v => NFData (Term v)
 
 instance Pretty v => Pretty (Term v) where
   pretty (Var v) = "?" <> pretty v
@@ -89,7 +98,9 @@ instance Pretty v => Pretty (Term v) where
 
 -- | A literal is identified by a 'Pred' and a list of 'Term's, where the arity in the 'Pred' is the
 -- same as the length of the list of 'Term's in the argument list.
-data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+
+instance NFData v => NFData (Lit v)
 
 instance Pretty v => Pretty (Lit v) where
   pretty (Lit (Pred p _) as) = pretty p <> parens (hsep . punctuate "," $ fmap pretty as)
@@ -100,7 +111,9 @@ lit pn as = Lit (Pred pn (length as)) as
 
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
-data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+
+instance NFData v => NFData (ARef v)
 
 instance Pretty v => Pretty (ARef v) where
   pretty (ARTerm t)   = pretty t
@@ -116,14 +129,18 @@ prettyAssertion assn ps = pretty assn
 -- When no assertion appears in the concrete syntax, the parser inserts a reference to the assertion
 -- currently being parsed.
 data BodyLit v = Says (ARef v) (Lit v)
-  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+
+instance NFData v => NFData (BodyLit v)
 
 instance Pretty v => Pretty (BodyLit v) where
   pretty (aref `Says` l) = pretty aref <> space <> "says" <> space <> pretty l
 
 -- | A rule has a head and a body made of 'BodyLit's.
 data Rule v = Rule (Lit v) [BodyLit v]
-  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable)
+  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+
+instance NFData v => NFData (Rule v)
 
 instance Pretty v => Pretty (Rule v) where
   pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line
@@ -149,7 +166,9 @@ factToRule fct = Rule (vacuous fct) []
 -- during evaluation.  However, an intermediate processor might use information from a directive to
 -- manipulate code /before/ it's loaded into the system and evaluated.  The motivating use cases for
 -- directives are to declare test-suites and (eventually) mode declarations.
-data Directive = Directive Fact [Fact] deriving (Eq, Ord, Show)
+data Directive = Directive Fact [Fact] deriving (Eq, Ord, Show, Generic)
+
+instance NFData Directive
 
 -- TODO: Pretty this up.
 instance Pretty Directive where
@@ -160,7 +179,7 @@ instance Pretty Directive where
 -- | To ensure freshness, tag runtime variables ('EVar's) with the current value of an 'Epoch'
 -- counter which we bump every time we allocate a new variable.
 newtype Epoch = Epoch { getEpoch :: Int }
-  deriving (Eq, Ord, Read, Show, Num, Enum)
+  deriving (Eq, Ord, Read, Show, Num, Enum, Generic, NFData)
 
 -- | TODO: This should probably become a newtype
 type TextVar = Text
@@ -172,7 +191,9 @@ query :: Text -> [Term TextVar] -> Query
 query = lit
 
 -- | At runtime, we unify on variables tagged with an 'Epoch' to help avoid undesirable variable capture.
-data EVar = EVar Epoch TextVar deriving (Eq, Ord, Read, Show)
+data EVar = EVar Epoch TextVar deriving (Eq, Ord, Read, Show, Generic)
+
+instance NFData EVar
 
 instance Pretty EVar where
   pretty (EVar (Epoch e) v) = pretty v <> brackets (pretty e)
@@ -183,7 +204,9 @@ unEVar (EVar _ v) = v
 
 -- | Raw variables are produced by the parser.
 data RawVar = RawVar { unRawVar :: Text, rawLoc :: SourcePos }
-  deriving (Read, Show)
+  deriving (Read, Show, Generic)
+
+instance NFData RawVar
 
 instance Eq RawVar where
   (==) = (==) `on` unRawVar
@@ -204,7 +227,9 @@ type Env = Map EVar (Term EVar)
 -- that the predicate expects it to be bound /before/ we attempt to satisfy it, or "output mode",
 -- where it is the responsibility of the predicate to bind the variable to a value if it succeeds.
 data Mode v = In v | Out v
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Generic)
+
+instance NFData v => NFData (Mode v)
 
 type ModedLit = Lit (Mode RawVar)
 

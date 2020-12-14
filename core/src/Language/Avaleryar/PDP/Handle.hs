@@ -1,22 +1,27 @@
+{-# LANGUAGE DeriveGeneric     #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
 module Language.Avaleryar.PDP.Handle where
 
 import           Control.Concurrent.MVar
+import           Control.DeepSeq         (NFData)
 import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Control.Monad.State
 import           Data.Map                (Map)
 import qualified Data.Map                as Map
 import           Data.Text               (Text)
+import           GHC.Generics            (Generic)
 
 import           Language.Avaleryar.PDP           (PDP(..), PDPConfig(..), PDPError, withMaxAnswers)
 import qualified Language.Avaleryar.PDP           as PDP
 import           Language.Avaleryar.Semantics
 import           Language.Avaleryar.Syntax
 
-data PDPHandle = PDPHandle PDPConfig (MVar RulesDb)
+data PDPHandle = PDPHandle PDPConfig (MVar RulesDb) deriving Generic
+
+instance NFData PDPHandle
 
 newHandle :: PDPConfig -> IO PDPHandle
 newHandle c = PDPHandle c <$> newMVar mempty
