@@ -11,7 +11,7 @@ import           Data.Map                (Map)
 import qualified Data.Map                as Map
 import           Data.Text               (Text)
 
-import           Language.Avaleryar.PDP           (PDP(..), PDPConfig(..), PDPError)
+import           Language.Avaleryar.PDP           (PDP(..), PDPConfig(..), PDPError, withMaxAnswers)
 import qualified Language.Avaleryar.PDP           as PDP
 import           Language.Avaleryar.Semantics
 import           Language.Avaleryar.Syntax
@@ -59,7 +59,9 @@ runDetailedQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either 
 runDetailedQuery h facts p args = withPDPHandle h $ PDP.runDetailedQuery facts p args
 
 checkQuery :: PDPHandle -> [Fact] -> Text -> [Term TextVar] -> IO (Either PDPError Bool)
-checkQuery h facts p args = runQuery h facts p args >>= pure . fmap (not . null)
+checkQuery h facts p args = withPDPHandle h $ do
+  res <- withMaxAnswers 1 $ PDP.runQuery facts p args
+  pure . not . null $ res
 
 dumpDb :: PDPHandle -> IO (Map Value [Pred])
 dumpDb (PDPHandle PDPConfig {..} mv) = do
