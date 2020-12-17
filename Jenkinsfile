@@ -59,7 +59,7 @@ timestamps {
                              # run the benchmarks with a 10-second timeout
                              stack bench avaleryar --fast --ba '-o ava-benchmarks.html --junit ava-benchmarks.xml --time-limit 10'
                          '''
-                         junit 'ava-benchmarks.xml'
+                         junit 'core/ava-benchmarks.xml'
                         }
                     }
                 )
