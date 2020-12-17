@@ -62,7 +62,7 @@ timestamps {
                         }
                     }
                 )
-                junit 'criterion.xml'
+                junit 'ava-benchmarks.xml'
             }
             stage('clean-up') {
                 /* Notify committer that job succeeded */
