@@ -58,8 +58,19 @@ timestamps {
                              stack test avaleryar avaleryar-repl --ghc-options='-Wall' --fast
                              # run the benchmarks with a 10-second timeout
                              stack bench avaleryar --fast --ba '-o ava-benchmarks.html --junit ava-benchmarks.xml --time-limit 10'
+
+                             mkdir $WORKSPACE/reports
+                             cp core/ava-benchmarks.html $WORKSPACE/reports
                          '''
-                         junit 'ava-benchmarks.xml'
+                         junit 'core/ava-benchmarks.xml'
+                         publishHTML(target : [
+                           allowMissing: false,
+                           alwaysLinkToLastBuild: true,
+                           keepAll: true,
+                           reportDir: 'reports',
+                           reportFiles: 'ava-benchmarks.html',
+                           reportName: 'Benchmarks'
+                         ])
                         }
                     }
                 )
