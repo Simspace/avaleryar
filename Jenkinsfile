@@ -62,6 +62,7 @@ timestamps {
                         }
                     }
                 )
+                junit 'criterion.xml'
             }
             stage('clean-up') {
                 /* Notify committer that job succeeded */
