@@ -56,7 +56,18 @@ timestamps {
                          sh '''
                              # no -Werror until ghc 8.8 is on everywhere
                              stack test avaleryar avaleryar-repl --ghc-options='-Wall' --fast
+                             # run the benchmarks with a 10-second timeout
+                             stack bench avaleryar --fast --ba '-o ava-benchmarks.html --junit ava-benchmarks.xml --time-limit 10'
                          '''
+                         junit 'core/ava-benchmarks.xml'
+                         publishHTML(target : [
+                           allowMissing: false,
+                           alwaysLinkToLastBuild: true,
+                           keepAll: true,
+                           reportDir: 'core',
+                           reportFiles: 'ava-benchmarks.html',
+                           reportName: 'Benchmarks'
+                         ])
                         }
                     }
                 )

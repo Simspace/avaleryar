@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -8,6 +9,7 @@
 
 module Language.Avaleryar.PDP where
 
+import           Control.DeepSeq              (NFData)
 import           Control.Exception            (Exception)
 import           Control.Monad.Except
 import           Control.Monad.Reader
@@ -19,6 +21,7 @@ import           Data.Map                     (Map)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
 import           Data.Typeable                (Typeable)
+import           GHC.Generics                 (Generic)
 import           System.FilePath              (stripExtension)
 import           Text.PrettyPrint.Leijen.Text (Pretty(..), putDoc, squotes)
 
@@ -35,7 +38,9 @@ data PDPConfig = PDPConfig
   , submitQuery      :: Maybe Query -- ^ for authorizing assertion submissions
   , maxDepth         :: Int
   , maxAnswers       :: Int
-  }
+  } deriving Generic
+
+instance NFData PDPConfig
 
 newtype PDP a = PDP { unPDP :: ReaderT PDPConfig (ExceptT PDPError (StateT RulesDb IO)) a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadError PDPError)

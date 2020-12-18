@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1f6f4e167e3308181b8ebc9d9ff9a936d791f8a4c22f98fdd495d06269d6281d
+-- hash: 044992e38b95e95fbc71566e0fb3d93578224033314e142dcb5bed8e44c29e94
 
 name:           avaleryar
 version:        0.0.1
@@ -31,6 +31,7 @@ library
   build-depends:
       base
     , containers
+    , deepseq
     , filepath
     , megaparsec
     , mtl
@@ -63,4 +64,19 @@ test-suite avaleryar-tests
     , hspec
     , hspec-core
     , text
+  default-language: Haskell2010
+
+benchmark avaleryar-benchmarks
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  other-modules:
+      Paths_avaleryar
+  hs-source-dirs:
+      bench
+  build-depends:
+      avaleryar
+    , base
+    , criterion
+    , text
+    , wl-pprint-text
   default-language: Haskell2010
