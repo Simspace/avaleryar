@@ -78,7 +78,7 @@ runPDP' pdp conf = runPDP pdp conf >>= either (error . show) pure
 runAva :: Avaleryar a -> PDP (AvaResults a)
 runAva = runAvaWith id
 
--- | Run an 'AvaleryarT' computation inside a 'PDP', configured according to the latter's
+-- | Run an 'Avaleryar' computation inside a 'PDP', configured according to the latter's
 -- 'PDPConfig'.  The caller is given an opportunity to muck with the 'RulesDb' with which the
 -- subcomputation is run.  This is used by 'runQuery' to add the @application@ assertion from the
 -- query just before executation.
@@ -94,7 +94,7 @@ runDetailedWith f ma = do
   PDPConfig {..} <- askConfig
   -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
   rdb            <- insertRuleAssertion "system" systemAssertion . f <$> getRulesDb
-  liftIO $ runAvalaryarT' maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
+  liftIO $ runAvaleryar' maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
   -- is this exactly what I just said not to do  ^ ?
 
 checkRules :: [Rule RawVar] -> PDP ()
