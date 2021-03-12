@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 044992e38b95e95fbc71566e0fb3d93578224033314e142dcb5bed8e44c29e94
+-- hash: a97ed2c9f1723a98756c0636259d71acc64ef8ce95ef5178958ddb540e50baf3
 
 name:           avaleryar
 version:        0.0.1
@@ -33,6 +33,7 @@ library
     , containers
     , deepseq
     , filepath
+    , hashable
     , megaparsec
     , mtl
     , qq-literals
