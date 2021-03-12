@@ -9,6 +9,7 @@ library:
     - containers
     - deepseq
     - filepath
+    - hashable
     - megaparsec
     - mtl
     - qq-literals

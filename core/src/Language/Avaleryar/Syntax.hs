@@ -7,6 +7,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
@@ -48,13 +49,14 @@ import           Control.DeepSeq              (NFData)
 import           Data.Char                    (isSpace)
 import           Data.Function                (on)
 import           Data.Functor.Const           (Const(..))
+import           Data.Hashable                (Hashable(hashWithSalt))
 import           Data.Map                     (Map)
 import           Data.String
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
 import           Data.Void
 import           GHC.Generics                 (Generic)
-import           Text.Megaparsec              (SourcePos(..), pos1)
+import           Text.Megaparsec              (SourcePos(..), pos1, unPos)
 import           Text.PrettyPrint.Leijen.Text
     (Doc, Pretty(..), brackets, colon, dot, empty, group, hsep, line, nest, parens, punctuate, space, vsep)
 
@@ -65,6 +67,7 @@ data Value
     deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData Value
+instance Hashable Value
 
 instance IsString Value where
   fromString = T . fromString
@@ -80,6 +83,7 @@ instance Pretty Value where
 data Pred = Pred Text Int deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData Pred
+instance Hashable Pred
 
 instance Pretty Pred where
   pretty (Pred p n) = pretty p <> "/" <> pretty n
@@ -91,6 +95,7 @@ instance Pretty Pred where
 data Term v = Val Value | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Term v)
+instance Hashable v => Hashable (Term v)
 
 instance Pretty v => Pretty (Term v) where
   pretty (Var v) = "?" <> pretty v
@@ -101,6 +106,7 @@ instance Pretty v => Pretty (Term v) where
 data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Lit v)
+instance Hashable v => Hashable (Lit v)
 
 instance Pretty v => Pretty (Lit v) where
   pretty (Lit (Pred p _) as) = pretty p <> parens (hsep . punctuate "," $ fmap pretty as)
@@ -114,6 +120,7 @@ lit pn as = Lit (Pred pn (length as)) as
 data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (ARef v)
+instance Hashable v => Hashable (ARef v)
 
 instance Pretty v => Pretty (ARef v) where
   pretty (ARTerm t)   = pretty t
@@ -132,6 +139,7 @@ data BodyLit v = Says (ARef v) (Lit v)
   deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (BodyLit v)
+instance Hashable v => Hashable (BodyLit v)
 
 instance Pretty v => Pretty (BodyLit v) where
   pretty (aref `Says` l) = pretty aref <> space <> "says" <> space <> pretty l
@@ -141,6 +149,7 @@ data Rule v = Rule (Lit v) [BodyLit v]
   deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Rule v)
+instance Hashable v => Hashable (Rule v)
 
 instance Pretty v => Pretty (Rule v) where
   pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line
@@ -169,6 +178,7 @@ factToRule fct = Rule (vacuous fct) []
 data Directive = Directive Fact [Fact] deriving (Eq, Ord, Show, Generic)
 
 instance NFData Directive
+instance Hashable Directive
 
 -- TODO: Pretty this up.
 instance Pretty Directive where
@@ -179,7 +189,7 @@ instance Pretty Directive where
 -- | To ensure freshness, tag runtime variables ('EVar's) with the current value of an 'Epoch'
 -- counter which we bump every time we allocate a new variable.
 newtype Epoch = Epoch { getEpoch :: Int }
-  deriving (Eq, Ord, Read, Show, Num, Enum, Generic, NFData)
+  deriving (Eq, Ord, Read, Show, Num, Enum, Generic, NFData, Hashable)
 
 -- | TODO: This should probably become a newtype
 type TextVar = Text
@@ -194,6 +204,7 @@ query = lit
 data EVar = EVar Epoch TextVar deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData EVar
+instance Hashable EVar
 
 instance Pretty EVar where
   pretty (EVar (Epoch e) v) = pretty v <> brackets (pretty e)
@@ -220,6 +231,16 @@ instance IsString RawVar where
 instance Pretty RawVar where
   pretty = pretty . unRawVar
 
+-- There's no 'Hashable' instance for 'SourcePos'.
+instance Hashable RawVar where
+  hashWithSalt salt (RawVar v (SourcePos {..})) =
+    salt
+    `hashWithSalt` v
+    `hashWithSalt` sourceName
+    `hashWithSalt` unPos sourceLine
+    `hashWithSalt` unPos sourceColumn
+
+
 -- | The runtime substitution.
 type Env = Map EVar (Term EVar)
 
@@ -230,6 +251,7 @@ data Mode v = In v | Out v
   deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData v => NFData (Mode v)
+instance Hashable v => Hashable (Mode v)
 
 type ModedLit = Lit (Mode RawVar)
 
