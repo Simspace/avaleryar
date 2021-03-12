@@ -65,8 +65,8 @@ and ensure well-modedness from the signature @DS@ of all directory service asser
 
 module Language.Avaleryar.Semantics where
 
-import           Control.DeepSeq              (NFData)
 import           Control.Applicative
+import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
@@ -75,6 +75,7 @@ import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
+import           GHC.Clock                    (getMonotonicTime)
 import           GHC.Generics                 (Generic)
 import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep)
 
@@ -139,13 +140,15 @@ data RT = RT
   , db    :: Db    -- ^ The database of compiled predicates
   } deriving (Generic)
 
--- | Allegedly more-detailed results from an 'Avaleryar' computation.  Probably will include
--- (wall-clock) timing information in the future, and perhaps even other stuff.  A more ergonomic
--- type is 'AvaResults', which you can build from 'DetailedResults' with 'avaResults'.
+-- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
+-- 'AvaResults', which you can build from 'DetailedResults' with 'avaResults'.
 data DetailedResults a = DetailedResults
-  { initialDepth, initialBreadth     :: Int
-  , remainingDepth, remainingBreadth :: Int
-  , results                          :: [a]
+  { initialDepth     :: Int    -- ^ The number of steps (fuel) with which the computation was run
+  , initialBreadth   :: Int    -- ^ The maximum number of answers requested
+  , remainingDepth   :: Int    -- ^ The remaining fuel at the end of the computation
+  , remainingBreadth :: Int    -- ^ Effectively @initialBreadth - length results@
+  , wallClockTime    :: Double -- ^ The time (in seconds) elapsed running the computation
+  , results          :: [a]    -- ^ The results of the computation
   } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
 
 -- | The results of running an 'Avaleryar' computation.
@@ -178,12 +181,15 @@ runAvaleryar :: Int -> Int -> Db -> Avaleryar a -> IO (AvaResults a)
 runAvaleryar d b db = fmap avaResults . runAvaleryar' d b db
 
 runAvaleryar' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
-runAvaleryar' d b db = fmap go
-                      . runM' (Just d) (Just b)
-                      . flip evalStateT (RT mempty 0 db)
-                      . unAvaleryar
-  where go (Just d', Just b', as) = DetailedResults d b d' b' as
-        go _                      = error "runM' gave back Nothings; shouldn't happen"
+runAvaleryar' d b db ava = do
+  start <- getMonotonicTime
+  res   <- runM' (Just d) (Just b)
+           . flip evalStateT (RT mempty 0 db)
+           . unAvaleryar $ ava
+  end   <- getMonotonicTime
+  case res of
+    (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) as
+    _                      -> error "runM' gave back Nothings; shouldn't happen"
 
 getRT :: Avaleryar RT
 getRT = Avaleryar get
