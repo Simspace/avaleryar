@@ -21,7 +21,7 @@ for a supply of guaranteed-fresh variables, and a database of predicates 'Db'.
 
 To 'resolve' a 'Goal' (really just a 'BodyLit'), we load its associated assertion, look its 'Pred'
 up, and execute the rule (or native predicate) to which it's bound.  Our "compiled" representation
-of rules amounts to fuctions from 'Lit's (the head of a rule) to 'AvaleryarT' computations.
+of rules amounts to fuctions from 'Lit's (the head of a rule) to 'Avaleryar' computations.
 
 The database distinguishes between 'Rule's and "native predicates".  In the original implementation,
 all mode-restricted predicates were baked into the @application@ assertion.  But we expect to have a
@@ -132,14 +132,14 @@ loadRule c p = getsRT (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 loadNative :: Text -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
 loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
 
--- | Runtime state for 'AvaleryarT' computations.
+-- | Runtime state for 'Avaleryar' computations.
 data RT = RT
   { env   :: Env   -- ^ The accumulated substitution
   , epoch :: Epoch -- ^ A counter for generating fresh variables
   , db    :: Db    -- ^ The database of compiled predicates
   } deriving (Generic)
 
--- | Allegedly more-detailed results from an 'AvalerlyarT' computation.  Probably will include
+-- | Allegedly more-detailed results from an 'Avaleryar' computation.  Probably will include
 -- (wall-clock) timing information in the future, and perhaps even other stuff.  A more ergonomic
 -- type is 'AvaResults', which you can build from 'DetailedResults' with 'avaResults'.
 data DetailedResults a = DetailedResults
@@ -148,7 +148,7 @@ data DetailedResults a = DetailedResults
   , results                          :: [a]
   } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
 
--- | The results of running an 'AvaleryarT' computation.
+-- | The results of running an 'Avaleryar' computation.
 data AvaResults a
   = Failure       -- ^ Produced no results
   | FuelExhausted -- ^ Ran out of fuel before producing any results
@@ -166,33 +166,33 @@ type DetailedQueryResults = DetailedResults Fact
 
 -- | A fair, backtracking, terminating, stateful monad transformer that does all the work.  This is
 -- 'StateT' over 'Stream', so state changes are undone on backtracking.  This is important.
-newtype Avaleryar a = AvaleryarT { unAvaleryarT :: StateT RT (Stream IO) a }
+newtype Avaleryar a = Avaleryar { unAvaleryar :: StateT RT (Stream IO) a }
   deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadYield, MonadIO)
 
--- | Run an 'AvaleryarT' computation.  The first argument is an upper limit on the number of
+-- | Run an 'Avaleryar' computation.  The first argument is an upper limit on the number of
 -- backtracking steps the computation may take before terminating, the second is an upper limit on
 -- the number of values the computation may produce before terminating.  Both could be made optional
 -- (unlimited depth, unlimited answers), but that doesn't seem like the point of what we're trying
 -- to do here.
-runAvalaryarT :: Int -> Int -> Db -> Avaleryar a -> IO (AvaResults a)
-runAvalaryarT d b db = fmap avaResults . runAvalaryarT' d b db
+runAvaleryar :: Int -> Int -> Db -> Avaleryar a -> IO (AvaResults a)
+runAvaleryar d b db = fmap avaResults . runAvaleryar' d b db
 
-runAvalaryarT' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
-runAvalaryarT' d b db = fmap go
+runAvaleryar' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
+runAvaleryar' d b db = fmap go
                       . runM' (Just d) (Just b)
                       . flip evalStateT (RT mempty 0 db)
-                      . unAvaleryarT
+                      . unAvaleryar
   where go (Just d', Just b', as) = DetailedResults d b d' b' as
         go _                      = error "runM' gave back Nothings; shouldn't happen"
 
 getRT :: Avaleryar RT
-getRT = AvaleryarT get
+getRT = Avaleryar get
 
 getsRT :: (RT -> a) -> Avaleryar a
-getsRT = AvaleryarT . gets
+getsRT = Avaleryar . gets
 
 putRT :: RT -> Avaleryar ()
-putRT = AvaleryarT . put
+putRT = Avaleryar . put
 
 -- | Try to find a binding for the given variable in the current substitution.
 --

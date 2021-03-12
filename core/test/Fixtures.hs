@@ -62,7 +62,7 @@ testDb = Db testRulesDb testNativeDb
 timeoutSecs :: Int -> IO a -> IO (Maybe a)
 timeoutSecs n = timeout $ n * 10 ^ (6 :: Int)
 
--- | TODO: Push this back into 'runAvaleryarT' or 'runM'...
+-- | TODO: Push this back into 'runAvaleryar' or 'runM'...
 data TestResult = Result (AvaResults (Lit EVar)) | Timeout
   deriving (Eq, Ord, Read, Show)
 
@@ -73,7 +73,7 @@ queryRules :: HasCallStack => Lit TextVar -> [Rule RawVar] -> IO TestResult
 queryRules q rs = do
   let rdb = insertRuleAssertion "qq" rm mempty
       rm = compileRules "qq" . fmap (fmap unRawVar) $ rs
-      go = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "qq" q
+      go = runAvaleryar 500 10 (Db rdb testNativeDb) $ compileQuery' "qq" q
 
   testResult <$> timeoutSecs 1 go
 
@@ -82,6 +82,6 @@ queryFile p q = do
   Right rs <- parseFile p
   let rdb = insertRuleAssertion "system" rm mempty
       rm  = compileRules "system" . fmap (fmap unRawVar) $ rs
-      go  = runAvalaryarT 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q
+      go  = runAvaleryar 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q
 
   testResult <$> timeoutSecs 1 go

@@ -24,7 +24,7 @@ spec = do
       shouldNotTimeout $ queryFile (exampleFile "loops.ava") [qry| loop2(?z) |]
 
     it "have limited output" $ do
-      Just answers <- timeoutSecs 1 $ runAvalaryarT 5000 10 testDb (msum . replicate 74 $ pure ())
+      Just answers <- timeoutSecs 1 $ runAvaleryar 5000 10 testDb (msum . replicate 74 $ pure ())
       length answers `shouldBe` 10
 
     it "demonstrate fair conjunction" $ do
