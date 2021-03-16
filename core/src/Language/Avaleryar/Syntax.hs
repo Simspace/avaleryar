@@ -207,7 +207,7 @@ instance NFData EVar
 instance Hashable EVar
 
 instance Pretty EVar where
-  pretty (EVar (Epoch e) v) = pretty v <> brackets (pretty e)
+  pretty (EVar (Epoch e) v) = pretty v <> "_" <> pretty e
 
 -- | Extract the 'TextVar' portion of an 'EVar'.
 unEVar :: EVar -> TextVar

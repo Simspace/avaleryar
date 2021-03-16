@@ -1,6 +1,11 @@
 name: avaleryar
 version: 0.0.1
 
+ghc-options:
+  - -O2
+  - -j4
+  - +RTS -A32M -RTS
+
 library:
   source-dirs: src
   dependencies:
@@ -17,12 +22,16 @@ library:
     - text
     - wl-pprint-text
 
+    - logict
+    - unordered-containers
+    - hashable
+
 tests:
   avaleryar-tests:
     main: Main.hs
     source-dirs: [test]
     dependencies:
-      - base 
+      - base
       - avaleryar
 
       - hspec

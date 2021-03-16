@@ -106,7 +106,7 @@ cmd q = do
 
 -- | TODO: repl options a la ghci's @+t@.
 putAnswers :: MonadIO m => DetailedQueryResults -> m ()
-putAnswers DetailedResults {..} = liftIO $ putResults results *> putStats
+putAnswers DetailedResults {..} = liftIO $ putResults (fst <$> results) *> putStats
   where putResults [] = putStrLn "no."
         putResults rs = putFacts rs
         putStats      = putStrLn $ "(" <> depthUsage <> " fuel, " <> breadthUsage <> " answers)"

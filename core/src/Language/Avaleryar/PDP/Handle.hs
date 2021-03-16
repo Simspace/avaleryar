@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 
+-- PDP: Policy Decision Point
 module Language.Avaleryar.PDP.Handle where
 
 import           Control.Concurrent.MVar

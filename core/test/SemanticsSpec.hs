@@ -5,6 +5,7 @@
 module SemanticsSpec where
 
 import Control.Monad
+import Data.Tree (Tree(Node))
 
 import Language.Avaleryar.Parser
 import Language.Avaleryar.Semantics
@@ -85,13 +86,16 @@ spec = do
                                  [rls| palindrome(?x) :- :prim says rev(?x, ?x). |]
 
     it "turns lists into multiple successes" $ do
-      Result (Success answers) <- queryRules [qry| bar(?rows) |]
+      Result (Success answers) <- queryRules [qry| bar(?rows2) |]
                                              [rls| foo("a\nb\nc").
                                                    bar(?rows) :- foo(?text),
-                                                   :prim says lines(?text, ?rows). |]
-      answers `shouldMatchList` [ Lit (Pred "bar" 1) [Val "a"]
-                                , Lit (Pred "bar" 1) [Val "b"]
-                                , Lit (Pred "bar" 1) [Val "c"] ]
+                                                                 lines(?text, ?rows).
+                                                   lines("a\nb\nc", "a").
+                                                   lines("a\nb\nc", "b").
+                                                   lines("a\nb\nc", "c"). |]
+      answers `shouldMatchList` [ (Lit (Pred "bar" 1) [Val "a"], [])
+                                , (Lit (Pred "bar" 1) [Val "b"], [])
+                                , (Lit (Pred "bar" 1) [Val "c"], []) ]
 
     it "works on IO computations" $ do
       shouldSucceed $ queryRules [qry| time(?t) |]
@@ -104,4 +108,3 @@ spec = do
       Result (Success answers) <- queryRules [qry| go(?b, ?x, 5) |]
                                              [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
       length answers `shouldBe` 5
-

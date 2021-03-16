@@ -12,6 +12,7 @@ import Text.PrettyPrint.Leijen.Text (displayTStrict, renderPretty, vcat, Pretty(
 
 import Language.Avaleryar
 import Language.Avaleryar.PDP
+import qualified Language.Avaleryar.PDP.Handle as H
 import Language.Avaleryar.Semantics hiding (env)
 import Language.Avaleryar.Syntax
 
@@ -78,6 +79,36 @@ line n = do
         either (error . show) (bool (error "no path found") (pure True)) res
 
   flip env go $ do
+    let Right cfg = pdpConfigRules mempty path
+    newHandle cfg {maxDepth = 4000}
+
+cliqueP :: Int -> IO [ProofObject]
+cliqueP n = do
+  let path = [rls| path(?x, ?y) :- pass(?x, ?y).
+                   path(?x, ?z) :- path(?x, ?y), path(?y, ?z).
+                   pass(?x, ?z) :- application says edge(?x, ?z). |]
+      edges = [lit "edge" [val x, val y]
+                 | x <- [1..n]
+                 , y <- [1..n]]
+      go hdl = do
+        res <- H.runDetailedQuery hdl edges "path" [val (1 :: Int), val n]
+        pure . fmap snd $ either (error . show) results res
+
+  go =<< do
+    let Right cfg = pdpConfigRules mempty path
+    newHandle cfg {maxDepth = 4000}
+
+lineP :: Int -> IO [ProofObject]
+lineP n = do
+  let path = [rls| path(?x, ?y) :- application says edge(?x, ?y).
+                   path(?x, ?z) :- application says edge(?x, ?y), path(?y, ?z). |]
+      edges = [lit "edge" [val x, val y]
+                 | (x, y) <- zip [1..pred n] [2..n]]
+      go hdl = do
+        res <- H.runDetailedQuery hdl edges "path" [val (1 :: Int), val n]
+        pure . fmap snd $ either (error . show) results res
+
+  go =<< do
     let Right cfg = pdpConfigRules mempty path
     newHandle cfg {maxDepth = 4000}
 

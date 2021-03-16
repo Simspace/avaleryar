@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a97ed2c9f1723a98756c0636259d71acc64ef8ce95ef5178958ddb540e50baf3
+-- hash: cf11a8497c81a2312690774a531306c328fb05e27a1421acd3045218705aba06
 
 name:           avaleryar
 version:        0.0.1
@@ -28,17 +28,20 @@ library
       Paths_avaleryar
   hs-source-dirs:
       src
+  ghc-options: -O2 -j4 +RTS -A32M -RTS
   build-depends:
       base
     , containers
     , deepseq
     , filepath
     , hashable
+    , logict
     , megaparsec
     , mtl
     , qq-literals
     , template-haskell
     , text
+    , unordered-containers
     , wl-pprint-text
   default-language: Haskell2010
 
@@ -54,6 +57,7 @@ test-suite avaleryar-tests
       Paths_avaleryar
   hs-source-dirs:
       test
+  ghc-options: -O2 -j4 +RTS -A32M -RTS
   build-depends:
       HUnit
     , QuickCheck
@@ -74,6 +78,7 @@ benchmark avaleryar-benchmarks
       Paths_avaleryar
   hs-source-dirs:
       bench
+  ghc-options: -O2 -j4 +RTS -A32M -RTS
   build-depends:
       avaleryar
     , base

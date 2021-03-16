@@ -37,9 +37,9 @@ import Control.Monad.Trans
 
 data StreamE m a
   = Nil
-  | One a
-  | Choice a (Stream m a)
-  | Incomplete (Stream m a)
+  | One !a
+  | Choice !a !(Stream m a)
+  | Incomplete !(Stream m a)
     deriving (Functor)
 
 newtype Stream m a = Stream { unStream :: m (StreamE m a) }

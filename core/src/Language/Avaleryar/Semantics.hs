@@ -70,14 +70,16 @@ import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
+import           Data.Maybe                   (catMaybes)
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (Text, pack)
+import           Data.Tree                    (Tree(..))
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
 import           GHC.Generics                 (Generic)
-import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep)
+import           Text.PrettyPrint.Leijen.Text (Doc, Pretty(..), (<$$>), linebreak, nest, vsep, putDoc, line, group, punctuate, hsep, parens, dot)
 
 import Control.Monad.FBackTrackT
 
@@ -120,6 +122,47 @@ instance Monoid Db where
   mempty = Db mempty mempty
   mappend = (<>)
 
+type ProofObject = [(Int, ARef EVar, Pred, [(Term EVar, Term EVar)])]
+type ProofObjectTree = Tree (ARef EVar, Pred, [(Term EVar, Term EVar)])
+
+proofObjectTree :: ProofObject -> ProofObjectTree
+proofObjectTree [(_, assn, pred, vars)] = Node (assn, pred, vars) []
+proofObjectTree [(n, assn, pred, vars):xs] = Node (assn, pred, vars) (go n xs)
+  where
+    go 0 (_:_) = error ""
+    go n (x:xs) = proofObjectTree
+
+a
+  b
+    c
+  d
+  e
+  f
+    g
+
+a, b, c, d, e, f, g
+a, b, d, e, f, c, g
+
+prettyPrintProof :: ProofObject -> Doc
+prettyPrintProof (Node (assn, p, terms) subProofs)
+  =  pretty (ResolvedLit assn p $ fmap ProofVar terms)
+  <> group (nest 2 (line <> (vsep $ fmap prettyPrintProof subProofs)))
+
+p = Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 0}) "x"),Val (I 1)),(Var (EVar (Epoch {getEpoch = 0}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 1),Val (I 1)),(Val (I 2),Var (EVar (Epoch {getEpoch = 0}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 2}) "x"),Val (I 2)),(Var (EVar (Epoch {getEpoch = 2}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 2),Val (I 2)),(Val (I 3),Var (EVar (Epoch {getEpoch = 2}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 4}) "x"),Val (I 3)),(Var (EVar (Epoch {getEpoch = 4}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 3),Val (I 3)),(Val (I 4),Var (EVar (Epoch {getEpoch = 4}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 6}) "x"),Val (I 4)),(Var (EVar (Epoch {getEpoch = 6}) "y"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 4),Val (I 4)),(Val (I 5),Val (I 5))]), subForest = []}]}]}]}]}
+
+data ResolvedLit = ResolvedLit (ARef EVar) Pred [ProofVar]
+
+instance Pretty ResolvedLit where
+  pretty (ResolvedLit assn (Pred p n) as)
+    = pretty assn <> dot <> pretty p <> parens (hsep . punctuate "," $ fmap pretty as)
+
+newtype ProofVar = ProofVar (Term EVar, Term EVar)
+
+instance Pretty ProofVar where
+  pretty (ProofVar (Val v1, Val _)) = pretty v1
+  pretty (ProofVar (Val t1, t2)) = pretty t2 <> "=" <> pretty t1
+  pretty (ProofVar (t1, t2)) = pretty t1 <> "=" <> pretty t2
+
 -- | As 'Map.lookup', but fail into 'empty' instead of 'Nothing' when the key is missing.
 alookup :: (Alternative f, Ord k) => k -> Map k a -> f a
 alookup k m = maybe empty pure $ Map.lookup k m
@@ -135,9 +178,10 @@ loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
-  { env   :: Env   -- ^ The accumulated substitution
-  , epoch :: Epoch -- ^ A counter for generating fresh variables
-  , db    :: Db    -- ^ The database of compiled predicates
+  { env          :: Env   -- ^ The accumulated substitution
+  , epoch        :: Epoch -- ^ A counter for generating fresh variables
+  , db           :: Db    -- ^ The database of compiled predicates
+  , currentProof :: ProofObject  -- ^ The current proof object
   } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
@@ -148,15 +192,15 @@ data DetailedResults a = DetailedResults
   , remainingDepth   :: Int    -- ^ The remaining fuel at the end of the computation
   , remainingBreadth :: Int    -- ^ Effectively @initialBreadth - length results@
   , wallClockTime    :: Double -- ^ The time (in seconds) elapsed running the computation
-  , results          :: [a]    -- ^ The results of the computation
-  } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
+  , results          :: [(a, ProofObject)]    -- ^ The results of the computation
+  } deriving (Eq, Read, Show, Foldable, Functor, Traversable, Generic)
 
 -- | The results of running an 'Avaleryar' computation.
 data AvaResults a
   = Failure       -- ^ Produced no results
   | FuelExhausted -- ^ Ran out of fuel before producing any results
-  | Success [a]   -- ^ Produced some results; may or may not have run out of fuel
-    deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
+  | Success [(a, ProofObject)]   -- ^ Produced some results; may or may not have run out of fuel
+    deriving (Eq, Read, Show, Foldable, Functor, Traversable, Generic)
 
 avaResults :: DetailedResults a -> AvaResults a
 avaResults DetailedResults {..} = case (remainingDepth, results) of
@@ -184,12 +228,14 @@ runAvaleryar' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
 runAvaleryar' d b db ava = do
   start <- getMonotonicTime
   res   <- runM' (Just d) (Just b)
-           . flip evalStateT (RT mempty 0 db)
+           . flip runStateT (RT mempty 0 db [])
            . unAvaleryar $ ava
   end   <- getMonotonicTime
   case res of
-    (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) as
+    (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) (mkRes <$> as)
     _                      -> error "runM' gave back Nothings; shouldn't happen"
+  where mkRes :: (a, RT) -> (a, ProofObject)
+        mkRes (a, rt) = (a, currentProof rt)
 
 getRT :: Avaleryar RT
 getRT = Avaleryar get
@@ -215,7 +261,7 @@ lookupVar v = do
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
-unifyTerm :: Term EVar -> Term EVar -> Avaleryar ()
+unifyTerm :: Term EVar -> Term EVar -> Avaleryar (Term EVar, Term EVar)
 unifyTerm t t' = do
   ts  <- subst t
   ts' <- subst t'
@@ -225,6 +271,8 @@ unifyTerm t t' = do
       (Var v, _) -> putRT rt {env = Map.insert v ts' env}
       (_, Var v) -> putRT rt {env = Map.insert v ts  env}
       _          -> empty -- ts /= ts', both are values
+
+  pure (ts, ts')
 
 -- | Apply the current substitution on the given 'Term'.  This function does path compression: if it
 -- finds a variable, it recurs.  This function does not fail: if there is no binding for the given
@@ -256,21 +304,25 @@ resolve (assn `Says` l@(Lit p as)) = do
 
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
-unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar ()
-unifyArgs [] []         = pure ()
-unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
+unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar [(Term EVar, Term EVar)]
+unifyArgs [] []         = pure []
+unifyArgs (x:xs) (y:ys) = (:) <$> unifyTerm x y <*> unifyArgs xs ys
 unifyArgs _ _           = empty
+
+unifyArgs_ xs ys = void $ unifyArgs xs ys
 
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
-compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
-compilePred rules (Lit _ qas) = do
-  rt@RT {..} <- getRT
-  putRT rt {epoch = succ epoch}
-  let rules' = fmap (EVar epoch) <$> rules
-      go (Rule (Lit _ has) body) = do
-        unifyArgs has qas
+compilePred :: ARef EVar -> [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePred assn rules (Lit _ qas) = do
+  rt <- getRT
+  putRT rt {epoch = succ $ epoch rt}
+  let rules' = fmap (EVar $ epoch rt) <$> rules
+      go (Rule (Lit pred has) body) = do
+        unifiedArgs <- unifyArgs has qas
+        rt2 <- getRT -- TODO: better name
+        putRT rt2 { currentProof = (length body, assn, pred, unifiedArgs) : currentProof rt2 }
         traverse_ resolve body
   msum $ go <$> rules'
 
@@ -280,8 +332,9 @@ compilePred rules (Lit _ qas) = do
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
 compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
 compileRules assn rules =
-  fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
-                                           | r@(Rule (Lit p _) _) <- rules]
+  fmap (compilePred $ ARTerm $ val assn) $ Map.fromListWith (++) [ (p, [emplaceCurrentAssertion assn r])
+                                                  | r@(Rule (Lit p _) _) <- rules
+                                                  ]
 
 emplaceCurrentAssertion :: Text -> Rule v -> Rule v
 emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
@@ -327,7 +380,7 @@ class ToNative a where
   inferMode :: [Mode RawVar]
 
 instance ToNative Value where
-  toNative v args = unifyArgs [val v] args
+  toNative v args = unifyArgs_ [val v] args
   inferMode = [outMode]
 
 -- TODO: Figure out if there's a reason I didn't do:
@@ -360,27 +413,27 @@ instance ToNative a => ToNative (Maybe a) where
 newtype Solely a = Solely a
 
 instance Valuable a => ToNative (Solely a) where
-  toNative (Solely a) args = unifyArgs [val a] args
+  toNative (Solely a) args = unifyArgs_ [val a] args
   inferMode = [outMode]
 
 instance (Valuable a, Valuable b) => ToNative (a, b) where
-  toNative (a, b) args = unifyArgs [val a, val b] args
+  toNative (a, b) args = unifyArgs_ [val a, val b] args
   inferMode = [outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c) => ToNative (a, b, c) where
-  toNative (a, b, c) args = unifyArgs [val a, val b, val c] args
+  toNative (a, b, c) args = unifyArgs_ [val a, val b, val c] args
   inferMode = [outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d) => ToNative (a, b, c, d) where
-  toNative (a, b, c, d) args = unifyArgs [val a, val b, val c, val d] args
+  toNative (a, b, c, d) args = unifyArgs_ [val a, val b, val c, val d] args
   inferMode = [outMode, outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e) => ToNative (a, b, c, d, e) where
-  toNative (a, b, c, d, e) args = unifyArgs [val a, val b, val c, val d, val e] args
+  toNative (a, b, c, d, e) args = unifyArgs_ [val a, val b, val c, val d, val e] args
   inferMode = [outMode, outMode, outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e, Valuable f) => ToNative (a, b, c, d, e, f) where
-  toNative (a, b, c, d, e, f) args = unifyArgs [val a, val b, val c, val d, val e, val f] args
+  toNative (a, b, c, d, e, f) args = unifyArgs_ [val a, val b, val c, val d, val e, val f] args
   inferMode = [outMode, outMode, outMode, outMode, outMode, outMode]
 
 -- | This is where the magic happens.  We require 'Valuable' (rather than 'ToNative') of the input
@@ -418,7 +471,7 @@ mkNativePred pn f = NativePred np moded
 mkNativeFact :: (Factual a) => a -> NativePred
 mkNativeFact a = NativePred np $ fmap Out f
   where f@(Lit _ args)   = vacuous $ toFact a
-        np (Lit _ args') = unifyArgs args args'
+        np (Lit _ args') = unifyArgs_ args args'
 
 -- | Create a native database with the given assertion name from the given list of native
 -- predicates.

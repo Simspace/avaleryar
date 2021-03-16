@@ -64,7 +64,7 @@ timeoutSecs n = timeout $ n * 10 ^ (6 :: Int)
 
 -- | TODO: Push this back into 'runAvaleryar' or 'runM'...
 data TestResult = Result (AvaResults (Lit EVar)) | Timeout
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Read, Show)
 
 testResult :: Maybe (AvaResults (Lit EVar)) -> TestResult
 testResult = maybe Timeout Result

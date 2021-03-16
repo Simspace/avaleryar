@@ -5,6 +5,8 @@
 
 module PDPSpec where
 
+import Data.Tree (Tree(Node))
+
 import Language.Avaleryar.Parser
 import Language.Avaleryar.PDP
 import Language.Avaleryar.PDP.Handle as Hdl
@@ -23,8 +25,8 @@ spec = do
   describe "pdp configuration" $ do
     it "respects maxAnswers and maxDepth" $ do
       let conf  = either (error . show) id $ pdpConfigText ndb "foo(?x) :- :test says range(1, 20, ?x)."
-          ans n = [Lit (Pred "foo" 1) [Val $ I x] | x <- [1..n]]
-          rq    = runQuery' [] [qry| foo(?y) |]
+          ans n = [(Lit (Pred "foo" 1) [Val $ I x], []) | x <- [1..n]]
+          rq    = runQuery' [] [qry| foo(?abc) |]
 
       -- These feel a bit brittle.  Caveat lector.
       runPDP' rq conf                      `shouldReturn` Success (ans 10)
