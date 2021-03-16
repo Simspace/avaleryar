@@ -42,7 +42,7 @@ replWithHandle conf k = do
   let complete = Prefix (wordCompleter byWord) commandMatcher
   handle <- newHandle conf
   k handle
-  runReaderT (evalRepl banner cmd options commandChar complete ini) handle
+  runReaderT (evalRepl (const banner) cmd options commandChar Nothing complete ini fini) handle
 
 -- | As 'replWithHandle', doing no additional configuration.
 repl :: PDPConfig -> IO ()
@@ -125,25 +125,25 @@ appFacts :: IORef [Fact]
 appFacts = unsafePerformIO $ newIORef []
 {-# NOINLINE appFacts #-}
 
-load :: [FilePath] -> Repl ()
+load :: Cmd Repl
 load paths = dontCrash $ do
   handle <- ask
-  liftIO $ for_ paths $ \path -> do
-    submitted <- submitFile handle Nothing path []
+  liftIO $ do
+    submitted <- submitFile handle Nothing paths []
     case submitted of
-      Left err -> putStrLn $ path ++ ": " ++ show err
+      Left err -> putStrLn $ paths ++ ": " ++ show err
       Right () -> pure ()
 
-dump :: [String] -> Repl ()
+dump :: Cmd Repl
 dump assns = do
   dumped <- ask >>= liftIO . dumpDb
   let assns' | null assns = Map.keys dumped
-             | otherwise  = fromString <$> assns
+             | otherwise  = [fromString assns]
   for_ (nubOrd assns') $ \assn -> liftIO $ do
     traverse_ (putAssertion assn) $ Map.lookup assn dumped
     liftIO $ putStrLn ""
 
-app :: [String] -> Repl ()
+app :: Cmd Repl
 app _ = do
   currentFacts <- liftIO $ readIORef appFacts
   let hdr  = "\n\n;; facts written above will be added to the 'application' assertion"
@@ -187,6 +187,9 @@ byWord n = do
 
 ini :: Repl ()
 ini = liftIO $ putStrLn "Avaleryar!"
+
+fini :: Repl ExitDecision
+fini = liftIO $ Exit <$ putStrLn "Goodbye!"
 
 commandChar :: Maybe Char
 commandChar = Just ':'
