@@ -122,33 +122,21 @@ instance Monoid Db where
   mempty = Db mempty mempty
   mappend = (<>)
 
-type ProofObject = [(Int, ARef EVar, Pred, [(Term EVar, Term EVar)])]
-type ProofObjectTree = Tree (ARef EVar, Pred, [(Term EVar, Term EVar)])
+type Proof = [(Epoch, Epoch, ARef EVar, Lit EVar)]
+type ProofTree = Tree (ARef EVar, Pred, [(Term EVar, Term EVar)])
+-- type ProofTree = Proof
 
-proofObjectTree :: ProofObject -> ProofObjectTree
-proofObjectTree [(_, assn, pred, vars)] = Node (assn, pred, vars) []
-proofObjectTree [(n, assn, pred, vars):xs] = Node (assn, pred, vars) (go n xs)
-  where
-    go 0 (_:_) = error ""
-    go n (x:xs) = proofObjectTree
+proofTree :: Proof -> ProofTree
+proofTree pf = let [(e', x)] = (m Map.! (-1)) in Node x (go 1)
+  where m = Map.fromListWith (++) [(e, [(e', (assn, p, zip as as))]) | (e, e', assn, Lit p as) <- pf]
+        go n = [Node x (go e') | (e', x) <- concat (Map.lookup n m)]
 
-a
-  b
-    c
-  d
-  e
-  f
-    g
-
-a, b, c, d, e, f, g
-a, b, d, e, f, c, g
-
-prettyPrintProof :: ProofObject -> Doc
+prettyPrintProof :: ProofTree -> Doc
 prettyPrintProof (Node (assn, p, terms) subProofs)
   =  pretty (ResolvedLit assn p $ fmap ProofVar terms)
   <> group (nest 2 (line <> (vsep $ fmap prettyPrintProof subProofs)))
 
-p = Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 0}) "x"),Val (I 1)),(Var (EVar (Epoch {getEpoch = 0}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 1),Val (I 1)),(Val (I 2),Var (EVar (Epoch {getEpoch = 0}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 2}) "x"),Val (I 2)),(Var (EVar (Epoch {getEpoch = 2}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 2),Val (I 2)),(Val (I 3),Var (EVar (Epoch {getEpoch = 2}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 4}) "x"),Val (I 3)),(Var (EVar (Epoch {getEpoch = 4}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 3),Val (I 3)),(Val (I 4),Var (EVar (Epoch {getEpoch = 4}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 6}) "x"),Val (I 4)),(Var (EVar (Epoch {getEpoch = 6}) "y"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 4),Val (I 4)),(Val (I 5),Val (I 5))]), subForest = []}]}]}]}]}
+-- p = Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 0}) "x"),Val (I 1)),(Var (EVar (Epoch {getEpoch = 0}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 1),Val (I 1)),(Val (I 2),Var (EVar (Epoch {getEpoch = 0}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 2}) "x"),Val (I 2)),(Var (EVar (Epoch {getEpoch = 2}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 2),Val (I 2)),(Val (I 3),Var (EVar (Epoch {getEpoch = 2}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 4}) "x"),Val (I 3)),(Var (EVar (Epoch {getEpoch = 4}) "z"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 3),Val (I 3)),(Val (I 4),Var (EVar (Epoch {getEpoch = 4}) "y"))]), subForest = []},Node {rootLabel = (Pred "path" 2,[(Var (EVar (Epoch {getEpoch = 6}) "x"),Val (I 4)),(Var (EVar (Epoch {getEpoch = 6}) "y"),Val (I 5))]), subForest = [Node {rootLabel = (Pred "edge" 2,[(Val (I 4),Val (I 4)),(Val (I 5),Val (I 5))]), subForest = []}]}]}]}]}
 
 data ResolvedLit = ResolvedLit (ARef EVar) Pred [ProofVar]
 
@@ -181,7 +169,7 @@ data RT = RT
   { env          :: Env   -- ^ The accumulated substitution
   , epoch        :: Epoch -- ^ A counter for generating fresh variables
   , db           :: Db    -- ^ The database of compiled predicates
-  , currentProof :: ProofObject  -- ^ The current proof object
+  , currentProof :: Proof -- ^ The current proof object
   } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
@@ -192,14 +180,14 @@ data DetailedResults a = DetailedResults
   , remainingDepth   :: Int    -- ^ The remaining fuel at the end of the computation
   , remainingBreadth :: Int    -- ^ Effectively @initialBreadth - length results@
   , wallClockTime    :: Double -- ^ The time (in seconds) elapsed running the computation
-  , results          :: [(a, ProofObject)]    -- ^ The results of the computation
+  , results          :: [(a, ProofTree)]    -- ^ The results of the computation
   } deriving (Eq, Read, Show, Foldable, Functor, Traversable, Generic)
 
 -- | The results of running an 'Avaleryar' computation.
 data AvaResults a
   = Failure       -- ^ Produced no results
   | FuelExhausted -- ^ Ran out of fuel before producing any results
-  | Success [(a, ProofObject)]   -- ^ Produced some results; may or may not have run out of fuel
+  | Success [(a, ProofTree)]   -- ^ Produced some results; may or may not have run out of fuel
     deriving (Eq, Read, Show, Foldable, Functor, Traversable, Generic)
 
 avaResults :: DetailedResults a -> AvaResults a
@@ -234,8 +222,8 @@ runAvaleryar' d b db ava = do
   case res of
     (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) (mkRes <$> as)
     _                      -> error "runM' gave back Nothings; shouldn't happen"
-  where mkRes :: (a, RT) -> (a, ProofObject)
-        mkRes (a, rt) = (a, currentProof rt)
+  where mkRes :: (a, RT) -> (a, ProofTree)
+        mkRes (a, rt) = (a, proofTree $ currentProof rt)
 
 getRT :: Avaleryar RT
 getRT = Avaleryar get
@@ -245,6 +233,9 @@ getsRT = Avaleryar . gets
 
 putRT :: RT -> Avaleryar ()
 putRT = Avaleryar . put
+
+modifyRT :: (RT -> RT) -> Avaleryar ()
+modifyRT = Avaleryar . modify
 
 -- | Try to find a binding for the given variable in the current substitution.
 --
@@ -301,6 +292,13 @@ resolve (assn `Says` l@(Lit p as)) = do
   resolver l
   Lit p <$> traverse subst as
 
+resolveAt :: Epoch -> Goal -> Avaleryar (Lit EVar)
+resolveAt e bl@(assn `Says` _) = do
+  ans <- resolve bl
+  modifyRT $ \rt@RT {..} -> rt {currentProof = (e, epoch, assn, ans) : currentProof}
+  pure ans
+
+
 
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
@@ -315,15 +313,15 @@ unifyArgs_ xs ys = void $ unifyArgs xs ys
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
 compilePred :: ARef EVar -> [Rule TextVar] -> Lit EVar -> Avaleryar ()
-compilePred assn rules (Lit _ qas) = do
-  rt <- getRT
-  putRT rt {epoch = succ $ epoch rt}
-  let rules' = fmap (EVar $ epoch rt) <$> rules
-      go (Rule (Lit pred has) body) = do
+compilePred assn rules q@(Lit _ qas) = do
+  rt@RT {..} <- getRT
+  putRT rt {epoch = succ epoch}
+  let rules' = fmap (EVar $ epoch) <$> rules
+      go (Rule (Lit _ has) body) = do
         unifiedArgs <- unifyArgs has qas
-        rt2 <- getRT -- TODO: better name
-        putRT rt2 { currentProof = (length body, assn, pred, unifiedArgs) : currentProof rt2 }
-        traverse_ resolve body
+        -- putRT rt { currentProof = (rt, assn, q) : currentProof rt }
+        -- traverse_ resolve body
+        traverse_ (resolveAt epoch) body
   msum $ go <$> rules'
 
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
@@ -342,7 +340,7 @@ emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
         go bl                    = bl
 
 compileQuery :: String -> Text -> [Term TextVar] -> Avaleryar (Lit EVar)
-compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
+compileQuery assn p args = resolveAt (-1) $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
