@@ -78,7 +78,7 @@ import           Data.Tree                    (Tree(..))
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
 import           GHC.Generics                 (Generic)
-import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep)
+import           Text.PrettyPrint.Leijen.Text (Pretty(..), vsep, Doc, group, nest, line, parens, hsep, punctuate)
 
 import Control.Monad.FBackTrackT
 
@@ -134,7 +134,7 @@ loadRule c p = getsRT (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 loadNative :: Text -> Pred -> Avaleryar (Lit EVar -> Avaleryar Proof)
 loadNative n p = do
   np <- getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
-  pure $ \l -> np l >> pure (Node (p, []) []) -- FIXME
+  pure $ \l@(Lit _ as) -> np l >> traverse subst as >>= \as' -> pure (Node (p, zip as as') []) -- FIXME
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
@@ -282,6 +282,18 @@ unifyArgs_ :: [Term EVar] -> [Term EVar] -> Avaleryar ()
 unifyArgs_ xs ys = void $ unifyArgs xs ys
 
 type Proof = Tree (Pred, [(Term EVar, Term EVar)])
+
+prettyProof :: Proof -> Doc
+prettyProof (Node (Pred p _, as) ns) = pretty p <> parens (hsep . punctuate "," $ fmap go as) <> group (nest 2 $ line <> (vsep $ fmap prettyProof ns))
+  where go = pretty . ProofVar
+
+newtype ProofVar = ProofVar (Term EVar, Term EVar) deriving Show
+
+instance Pretty ProofVar where
+  pretty (ProofVar (t1, t2)) = go t1 <> "=" <> go t2
+    where go (Var v@(EVar e vn)) | e == Epoch (-1) = "?" <> pretty vn
+                                 | otherwise      = pretty v
+          go nv = pretty nv
 
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
