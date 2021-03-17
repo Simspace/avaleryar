@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -33,7 +34,7 @@ import Language.Avaleryar.Syntax
 
 
 data PDPConfig = PDPConfig
-  { systemAssertion  :: Map Pred (Lit EVar -> Avaleryar ()) -- ^ can't change system assertion at runtime
+  { systemAssertion  :: Map Pred (Lit EVar -> Avaleryar Proof) -- ^ can't change system assertion at runtime
   , nativeAssertions :: NativeDb   -- ^ Needs to be in the reader so changes induce a new mode-check on rules
   , submitQuery      :: Maybe Query -- ^ for authorizing assertion submissions
   , maxDepth         :: Int
@@ -140,13 +141,23 @@ retractAssertion = modifyRulesDb . retractRuleAssertion
 
 runDetailedQuery :: [Fact] -> Text -> [Term TextVar] -> PDP DetailedQueryResults
 runDetailedQuery facts p args  = do
-  answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p args
-  flip traverse answers $ \l -> do
-     traverse (throwError . VarInQueryResults . unEVar) l
+  -- answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p args
+  -- flip traverse answers $ \l -> do
+  --    traverse (throwError . VarInQueryResults . unEVar) l
+  res <- runDetailedQuery' facts p args
+  pure $ fmap fst res
+
+runDetailedQuery' :: [Fact] -> Text -> [Term TextVar] -> PDP (DetailedResults (Fact, Proof))
+runDetailedQuery' facts p args  = do
+  PDPConfig {..} <- askConfig
+  -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
+  rdb            <- insertRuleAssertion "system" systemAssertion . (insertApplicationAssertion facts)  <$> getRulesDb
+  answers <- liftIO $ runAvaQuery maxDepth maxAnswers (Db rdb nativeAssertions) p args
+  traverse (\(l,p) -> traverse (throwError . VarInQueryResults . unEVar) l >>= pure . (,p)) answers
 
 runQuery :: [Fact] -> Text -> [Term TextVar] -> PDP QueryResults
 runQuery facts p args  = do
-  answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
+  answers <- fmap (fmap fst) . runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \l -> do
      traverse (throwError . VarInQueryResults . unEVar) l
 
@@ -180,7 +191,7 @@ pdpConfig :: NativeDb -> FilePath -> IO (Either PDPError PDPConfig)
 pdpConfig db fp = runExceptT $ do
   sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
+  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50000 10
 
 pdpConfigText :: NativeDb -> Text -> Either PDPError PDPConfig
 pdpConfigText db text = do

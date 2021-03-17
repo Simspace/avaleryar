@@ -74,6 +74,7 @@ import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (Text, pack)
+import           Data.Tree                    (Tree(..))
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
 import           GHC.Generics                 (Generic)
@@ -93,7 +94,7 @@ data NativePred = NativePred
 instance NFData NativePred
 
 -- | Regular 'Rule' assertions may be named by any 'Value'.
-newtype RulesDb = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> Avaleryar ())) }
+newtype RulesDb = RulesDb  { unRulesDb  :: Map Value (Map Pred (Lit EVar -> Avaleryar Proof)) }
   deriving (Semigroup, Monoid, Generic)
 
 instance Pretty RulesDb where
@@ -126,12 +127,14 @@ alookup k m = maybe empty pure $ Map.lookup k m
 
 -- | Look up a the 'Pred' in the assertion denoted by the given 'Value', and return the code to
 -- execute it.
-loadRule :: Value -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
+loadRule :: Value -> Pred -> Avaleryar (Lit EVar -> Avaleryar Proof)
 loadRule c p = getsRT (unRulesDb . rulesDb . db) >>= alookup c >>= alookup p
 
 -- | As 'loadRule' for native predicates.
-loadNative :: Text -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
-loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
+loadNative :: Text -> Pred -> Avaleryar (Lit EVar -> Avaleryar Proof)
+loadNative n p = do
+  np <- getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p >>= pure . nativePred
+  pure $ \l -> np l >> pure (Node (p, []) []) -- FIXME
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
@@ -149,7 +152,7 @@ data DetailedResults a = DetailedResults
   , remainingBreadth :: Int    -- ^ Effectively @initialBreadth - length results@
   , wallClockTime    :: Double -- ^ The time (in seconds) elapsed running the computation
   , results          :: [a]    -- ^ The results of the computation
-  } deriving (Eq, Ord, Read, Show, Foldable, Functor, Traversable, Generic)
+  } deriving (Eq, Read, Show, Foldable, Functor, Traversable, Generic)
 
 -- | The results of running an 'Avaleryar' computation.
 data AvaResults a
@@ -191,6 +194,18 @@ runAvaleryar' d b db ava = do
     (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) as
     _                      -> error "runM' gave back Nothings; shouldn't happen"
 
+runAvaQuery :: Int -> Int -> Db -> Text -> [Term TextVar] -> IO (DetailedResults (Lit EVar, Proof))
+runAvaQuery d b db p args = runAvaleryar' d b db $ compileQuery "system" p args
+-- runAvaQuery d b db p args = do
+--   start <- getMonotonicTime
+--   res   <- runM' (Just d) (Just b)
+--            . flip evalStateT (RT mempty 0 db)
+--            . unAvaleryar $ compileQuery "system" p args
+--   end   <- getMonotonicTime
+--   case res of
+--     (Just d', Just b', as) -> pure $ DetailedResults d b d' b' (end - start) as
+--     _                      -> error "runM' gave back Nothings; shouldn't happen"
+
 getRT :: Avaleryar RT
 getRT = Avaleryar get
 
@@ -215,7 +230,7 @@ lookupVar v = do
   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
-unifyTerm :: Term EVar -> Term EVar -> Avaleryar ()
+unifyTerm :: Term EVar -> Term EVar -> Avaleryar (Term EVar, Term EVar)
 unifyTerm t t' = do
   ts  <- subst t
   ts' <- subst t'
@@ -225,6 +240,7 @@ unifyTerm t t' = do
       (Var v, _) -> putRT rt {env = Map.insert v ts' env}
       (_, Var v) -> putRT rt {env = Map.insert v ts  env}
       _          -> empty -- ts /= ts', both are values
+  pure (ts, ts')
 
 -- | Apply the current substitution on the given 'Term'.  This function does path compression: if it
 -- finds a variable, it recurs.  This function does not fail: if there is no binding for the given
@@ -237,7 +253,7 @@ type Goal = BodyLit EVar
 
 -- | Analyze the given assertion reference and look up the given predicate to find some code to
 -- execute.
-loadResolver :: ARef EVar -> Pred -> Avaleryar (Lit EVar -> Avaleryar ())
+loadResolver :: ARef EVar -> Pred -> Avaleryar (Lit EVar -> Avaleryar Proof)
 loadResolver (ARNative n) p = loadNative n p
 loadResolver (ARTerm   t) p = do
   Val c <- subst t -- mode checking should assure that assertion references are ground by now
@@ -247,38 +263,46 @@ loadResolver ARCurrent    _ = error "found ARCurrent in loadResolver; shouldn't 
 -- | Load the appropriate assertion, and execute the predicate in the goal.  Eagerly substitutes,
 -- which I think might be inefficient, but I also think was tricky to not-do here way back when I
 -- wrote this.
-resolve :: Goal -> Avaleryar (Lit EVar)
+resolve :: Goal -> Avaleryar (Lit EVar, Proof)
 resolve (assn `Says` l@(Lit p as)) = do
   resolver <- yield' $ loadResolver assn p
-  resolver l
-  Lit p <$> traverse subst as
+  pf <- resolver l
+  ans <- Lit p <$> traverse subst as
+  pure (ans, pf)
 
 
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
-unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar ()
-unifyArgs [] []         = pure ()
-unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
+unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar [(Term EVar, Term EVar)]
+unifyArgs [] []         = pure []
+unifyArgs (x:xs) (y:ys) = (:) <$> unifyTerm x y <*> unifyArgs xs ys
 unifyArgs _ _           = empty
+
+unifyArgs_ :: [Term EVar] -> [Term EVar] -> Avaleryar ()
+unifyArgs_ xs ys = void $ unifyArgs xs ys
+
+type Proof = Tree (Pred, [(Term EVar, Term EVar)])
 
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
-compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar Proof
 compilePred rules (Lit _ qas) = do
   rt@RT {..} <- getRT
   putRT rt {epoch = succ epoch}
   let rules' = fmap (EVar epoch) <$> rules
-      go (Rule (Lit _ has) body) = do
-        unifyArgs has qas
-        traverse_ resolve body
+      go (Rule (Lit p has) body) = do
+        unified <- unifyArgs has qas
+        pfs <- traverse resolve body
+        pure $ Node (p, unified) (snd <$> pfs)
   msum $ go <$> rules'
+
 
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
 --
 -- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
-compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
+compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar Proof)
 compileRules assn rules =
   fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
                                            | r@(Rule (Lit p _) _) <- rules]
@@ -288,17 +312,17 @@ emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
   where go (ARCurrent `Says` bl) = (ARTerm $ val assn) `Says` bl
         go bl                    = bl
 
-compileQuery :: String -> Text -> [Term TextVar] -> Avaleryar (Lit EVar)
+compileQuery :: String -> Text -> [Term TextVar] -> Avaleryar (Lit EVar, Proof)
 compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
                   _       -> ARTerm . Val $ fromString assn
 
 -- | TODO: Suck less
-compileQuery' :: String -> Query -> Avaleryar (Lit EVar)
+compileQuery' :: String -> Query -> Avaleryar (Lit EVar, Proof)
 compileQuery' assn (Lit (Pred p _) args) = compileQuery assn p args
 
-insertRuleAssertion :: Text -> Map Pred (Lit EVar -> Avaleryar ()) -> RulesDb -> RulesDb
+insertRuleAssertion :: Text -> Map Pred (Lit EVar -> Avaleryar Proof) -> RulesDb -> RulesDb
 insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
 
 retractRuleAssertion :: Text -> RulesDb -> RulesDb
@@ -327,7 +351,7 @@ class ToNative a where
   inferMode :: [Mode RawVar]
 
 instance ToNative Value where
-  toNative v args = unifyArgs [val v] args
+  toNative v args = unifyArgs_ [val v] args
   inferMode = [outMode]
 
 -- TODO: Figure out if there's a reason I didn't do:
@@ -360,27 +384,27 @@ instance ToNative a => ToNative (Maybe a) where
 newtype Solely a = Solely a
 
 instance Valuable a => ToNative (Solely a) where
-  toNative (Solely a) args = unifyArgs [val a] args
+  toNative (Solely a) args = unifyArgs_ [val a] args
   inferMode = [outMode]
 
 instance (Valuable a, Valuable b) => ToNative (a, b) where
-  toNative (a, b) args = unifyArgs [val a, val b] args
+  toNative (a, b) args = unifyArgs_ [val a, val b] args
   inferMode = [outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c) => ToNative (a, b, c) where
-  toNative (a, b, c) args = unifyArgs [val a, val b, val c] args
+  toNative (a, b, c) args = unifyArgs_ [val a, val b, val c] args
   inferMode = [outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d) => ToNative (a, b, c, d) where
-  toNative (a, b, c, d) args = unifyArgs [val a, val b, val c, val d] args
+  toNative (a, b, c, d) args = unifyArgs_ [val a, val b, val c, val d] args
   inferMode = [outMode, outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e) => ToNative (a, b, c, d, e) where
-  toNative (a, b, c, d, e) args = unifyArgs [val a, val b, val c, val d, val e] args
+  toNative (a, b, c, d, e) args = unifyArgs_ [val a, val b, val c, val d, val e] args
   inferMode = [outMode, outMode, outMode, outMode, outMode]
 
 instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e, Valuable f) => ToNative (a, b, c, d, e, f) where
-  toNative (a, b, c, d, e, f) args = unifyArgs [val a, val b, val c, val d, val e, val f] args
+  toNative (a, b, c, d, e, f) args = unifyArgs_ [val a, val b, val c, val d, val e, val f] args
   inferMode = [outMode, outMode, outMode, outMode, outMode, outMode]
 
 -- | This is where the magic happens.  We require 'Valuable' (rather than 'ToNative') of the input
@@ -418,7 +442,7 @@ mkNativePred pn f = NativePred np moded
 mkNativeFact :: (Factual a) => a -> NativePred
 mkNativeFact a = NativePred np $ fmap Out f
   where f@(Lit _ args)   = vacuous $ toFact a
-        np (Lit _ args') = unifyArgs args args'
+        np (Lit _ args') = unifyArgs_ args args'
 
 -- | Create a native database with the given assertion name from the given list of native
 -- predicates.
