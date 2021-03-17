@@ -75,7 +75,7 @@ queryRules q rs = do
       rm = compileRules "qq" . fmap (fmap unRawVar) $ rs
       go = runAvaleryar 500 10 (Db rdb testNativeDb) $ compileQuery' "qq" q
 
-  testResult <$> timeoutSecs 1 go
+  testResult . fmap (fmap fst) <$> timeoutSecs 1 go
 
 queryFile :: HasCallStack => FilePath -> Lit TextVar -> IO TestResult
 queryFile p q = do
@@ -84,4 +84,4 @@ queryFile p q = do
       rm  = compileRules "system" . fmap (fmap unRawVar) $ rs
       go  = runAvaleryar 500 10 (Db rdb testNativeDb) $ compileQuery' "system" q
 
-  testResult <$> timeoutSecs 1 go
+  testResult . fmap (fmap fst) <$> timeoutSecs 1 go

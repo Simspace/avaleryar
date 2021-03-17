@@ -52,6 +52,7 @@ module Language.Avaleryar.Testing
   ) where
 
 import           Data.Bool                    (bool)
+import           Control.Monad                (void)
 import           Data.Foldable                (for_, toList)
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, splitOn)
@@ -105,7 +106,7 @@ parseDb _ _ = Nothing
 --
 -- TODO: The fake mode might be too strong, in which case we'd need some other plan?
 factsToNative :: [Fact] -> [NativePred]
-factsToNative fs = [NativePred (compilePred rs) (modeFor p) | (p, rs) <- Map.toList preds]
+factsToNative fs = [NativePred (\l -> void $ compilePred rs l) (modeFor p) | (p, rs) <- Map.toList preds]
   where preds = Map.fromListWith (<>) [(p, [factToRule f]) | f@(Lit p _) <- fs]
         modeFor p@(Pred _ n) = Lit p (replicate n (Var outMode))
 
@@ -207,7 +208,3 @@ runTestFile conf k tf = do
   case parsed of
     Left err -> pure (Left err)
     Right ts -> Right <$> traverse gatherResults ts
-
-
-
-
