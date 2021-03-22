@@ -42,7 +42,7 @@ timestamps {
                         dir(path: "${haskellWorkDir}/") {
                             def scmVars = checkout([
                                 $class: 'GitSCM',
-                                branches: [[ name: env.BRANCH_NAME ]],
+                                branches: [[ name: env.CHANGE_BRANCH ]],
                                 userRemoteConfigs: [[credentialsId: '010e0c41-651f-4f83-8706-b5f4281d9e9c', url: 'git@github.com:Simspace/avaleryar.git']],
                                 extensions: [[$class: 'CleanBeforeCheckout']],
                             ])
