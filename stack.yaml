@@ -1,4 +1,4 @@
-resolver: lts-15.5
+resolver: lts-17.6
 packages:
   - ./core
   # - ./extras # avaleryar-extras isn't getting the use I'd hoped; gonna stop building it for a bit.
@@ -6,3 +6,4 @@ packages:
 extra-deps:
   - qq-literals-0.1.0.1
   - jsonpath-0.1.0.1
+  - repline-0.3.0.0

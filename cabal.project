@@ -1,4 +1,4 @@
 packages:
   ./core
-  ./extras
+  -- ./extras -- see comment in stack.yaml
   ./repl
