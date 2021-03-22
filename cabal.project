@@ -1,0 +1,4 @@
+packages:
+  ./core
+  -- ./extras -- see comment in stack.yaml
+  ./repl
