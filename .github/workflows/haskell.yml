@@ -58,6 +58,7 @@ jobs:
       run: |
           cabal update
           cabal build all --dependencies-only --enable-tests --disable-optimization
+          cabal install hspec-discover
     - name: Build
       run: |
           cabal build all --enable-tests --disable-optimization 2>&1 | tee build.log
