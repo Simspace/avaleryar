@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7035551c001e4368c98bedebea9a85f4f2e861fb2078c96da206c369e932ded4
+-- hash: f93da3e2bc1b2c117fc823aa2162670a50c41b71dec41a50354a8da67861635c
 
 name:           avaleryar-repl
-version:        0.0.1
+version:        0.0.1.1
 build-type:     Simple
 
 library

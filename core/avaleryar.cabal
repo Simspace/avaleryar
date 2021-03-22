@@ -7,7 +7,7 @@ cabal-version: 1.12
 -- hash: a97ed2c9f1723a98756c0636259d71acc64ef8ce95ef5178958ddb540e50baf3
 
 name:           avaleryar
-version:        0.0.1
+version:        0.0.1.1
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
