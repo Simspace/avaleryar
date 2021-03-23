@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.31.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f93da3e2bc1b2c117fc823aa2162670a50c41b71dec41a50354a8da67861635c
+-- hash: 04a067f4d0a41b6b40646342fdc0c272b0239b3c57d98f407671de7670a1503d
 
 name:           avaleryar-repl
 version:        0.0.1.1
@@ -25,7 +25,7 @@ library
     , mtl
     , optparse-applicative
     , read-editor
-    , repline ==0.3.*
+    , repline
     , text
     , wl-pprint-text
   default-language: Haskell2010
