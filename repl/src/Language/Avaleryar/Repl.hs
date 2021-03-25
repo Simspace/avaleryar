@@ -42,7 +42,15 @@ replWithHandle conf k = do
   let complete = Prefix (wordCompleter byWord) commandMatcher
   handle <- newHandle conf
   k handle
-  runReaderT (evalRepl banner cmd options commandChar complete ini) handle
+  runReaderT (evalRepl
+                banner
+                cmd
+                options
+                commandChar
+                multilineStr
+                complete
+                ini
+                fin) handle
 
 -- | As 'replWithHandle', doing no additional configuration.
 repl :: PDPConfig -> IO ()
@@ -113,8 +121,8 @@ putAnswers DetailedResults {..} = liftIO $ putResults results *> putStats
         depthUsage    = show (initialDepth   - remainingDepth)   <> "/" <> show initialDepth
         breadthUsage  = show (initialBreadth - remainingBreadth) <> "/" <> show initialBreadth
 
-banner :: Repl String
-banner = pure "-? "
+banner :: MultiLine -> Repl String
+banner _ = pure "-? "
 
 options :: Options Repl
 options = [ ("load", load)
@@ -125,25 +133,25 @@ appFacts :: IORef [Fact]
 appFacts = unsafePerformIO $ newIORef []
 {-# NOINLINE appFacts #-}
 
-load :: [FilePath] -> Repl ()
-load paths = dontCrash $ do
+load :: FilePath -> Repl ()
+load path = dontCrash $ do
   handle <- ask
-  liftIO $ for_ paths $ \path -> do
+  liftIO $ do
     submitted <- submitFile handle Nothing path []
     case submitted of
       Left err -> putStrLn $ path ++ ": " ++ show err
       Right () -> pure ()
 
-dump :: [String] -> Repl ()
+dump :: String -> Repl ()
 dump assns = do
   dumped <- ask >>= liftIO . dumpDb
   let assns' | null assns = Map.keys dumped
-             | otherwise  = fromString <$> assns
+             | otherwise  = fromString <$> words assns -- janky
   for_ (nubOrd assns') $ \assn -> liftIO $ do
     traverse_ (putAssertion assn) $ Map.lookup assn dumped
     liftIO $ putStrLn ""
 
-app :: [String] -> Repl ()
+app :: String -> Repl ()
 app _ = do
   currentFacts <- liftIO $ readIORef appFacts
   let hdr  = "\n\n;; facts written above will be added to the 'application' assertion"
@@ -188,8 +196,14 @@ byWord n = do
 ini :: Repl ()
 ini = liftIO $ putStrLn "Avaleryar!"
 
+fin :: Repl ExitDecision
+fin = pure Exit
+
 commandChar :: Maybe Char
 commandChar = Just ':'
+
+multilineStr :: Maybe String
+multilineStr = Nothing
 
 diePretty :: (Pretty a, MonadIO m) => a -> m b
 diePretty x = liftIO $ do
