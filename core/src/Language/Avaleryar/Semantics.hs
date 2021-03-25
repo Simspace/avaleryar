@@ -68,6 +68,7 @@ module Language.Avaleryar.Semantics where
 import           Control.Applicative
 import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
+import qualified Control.Monad.Fail           as Fail
 import           Control.Monad.State
 import           Data.Foldable
 import           Data.Map                     (Map)
@@ -170,7 +171,7 @@ type DetailedQueryResults = DetailedResults Fact
 -- | A fair, backtracking, terminating, stateful monad transformer that does all the work.  This is
 -- 'StateT' over 'Stream', so state changes are undone on backtracking.  This is important.
 newtype Avaleryar a = Avaleryar { unAvaleryar :: StateT RT (Stream IO) a }
-  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, MonadFail, MonadYield, MonadIO)
+  deriving (Functor, Applicative, Alternative, Monad, MonadPlus, Fail.MonadFail, MonadYield, MonadIO)
 
 -- | Run an 'Avaleryar' computation.  The first argument is an upper limit on the number of
 -- backtracking steps the computation may take before terminating, the second is an upper limit on
