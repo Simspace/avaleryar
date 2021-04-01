@@ -17,7 +17,7 @@ Avaleryar is an implementation of Pimlott and Kiselyov's Soutei trust-management
 * An integrated unit-testing system. (NB: It's pretty bad; we intend to improve it someday).
 
 We have more improvements planned for the future, which you can read about
-[#planned-improvements](below).
+[below](#planned-improvements).
 
 ## A Quick Example
 
