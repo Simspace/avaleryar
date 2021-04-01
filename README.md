@@ -1,6 +1,6 @@
 # Avaleryar
 
-An implementation of [Soutei](http://okmij.org/ftp/papers/Soutei.pdf).
+An implementation of [Soutei][soutei-paper].
 
 Not yet fit for human consumption.
 
@@ -8,7 +8,8 @@ Not yet fit for human consumption.
 
 ## Overview
 
-Avaleryar is an implementation of Pimlott and Kiselyov's Soutei trust-management system, comprising
+Avaleryar is an implementation of [Pimlott and Kiselyov's Soutei][soutei-paper] trust-management
+system, comprising
 
 * A [Datalog](https://en.wikipedia.org/wiki/Datalog)-like rule language for describing authorization
   policies (including the evaluator, parser, and a pretty-printer).
@@ -314,6 +315,10 @@ This would represent a file owned by `mary`, with group `wheel`, with permission
 
 ```prolog
 ;; allow ?access when the user is the owner and ?access is enabled for them.
+;; NB: The word "user" appears with three different meanings in this rule.  The application fact
+;; 'user/1', which indicates the user accessing the file, the variable '?user', which has that
+;; user bound to it, and the symbol 'user' in 'perm(user, ?access)', which refers to user
+;; permissions on a file in the sense of 'chmod u+x $FILE'.
 may(?access) :-
   application says file(?file),
   application says user(?user),
@@ -417,3 +422,6 @@ TODO: tutorial module.
 * Assertion signatures (enabling the use of variables for native assertions)
 * Some kind of [abduction](https://en.wikipedia.org/wiki/Abductive_logic_programming) (to offer
   explanations of query failure)
+
+
+[soutei-paper]: http://okmij.org/ftp/papers/Soutei.pdf "Soutei Paper"
