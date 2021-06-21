@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a97ed2c9f1723a98756c0636259d71acc64ef8ce95ef5178958ddb540e50baf3
+-- hash: 30fac0c3b148d219353f8644d0c0934b9b681991e4892964c8bbf9aba9738fc7
 
 name:           avaleryar
 version:        0.0.1.1
@@ -54,6 +54,8 @@ test-suite avaleryar-tests
       Paths_avaleryar
   hs-source-dirs:
       test
+  build-tool-depends:
+      hspec-discover:hspec-discover
   build-depends:
       HUnit
     , QuickCheck

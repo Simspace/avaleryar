@@ -21,8 +21,10 @@ tests:
   avaleryar-tests:
     main: Main.hs
     source-dirs: [test]
+    build-tools:
+      - hspec-discover
     dependencies:
-      - base 
+      - base
       - avaleryar
 
       - hspec
