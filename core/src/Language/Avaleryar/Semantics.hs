@@ -273,31 +273,36 @@ compilePredDefault rules (Lit _ qas) = do
         traverse_ resolve body
   msum $ go <$> rules'
 
--- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
--- given a query that applies, and that the rules it was handed are all for the same predicate.
--- This is not the function you want.
+-- | NB: 'compilePred' assumes it was given a query that applies, and that the
+-- rules it was handed are all for the same predicate. This is not the function
+-- you want.
 compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
 compilePred rules =
-  -- If the rules are all facts, we can efficiently check
-  if (all isFact rules)
+  -- If the rules are all facts, unification may be done using a set in some common cases.
+  if all isFact rules
     then
+      -- We precompute the set
       let setOfVals = HashSet.fromList $ fmap (mapMaybe termVal . litTerms . ruleLit) rules
       in \arg@(Lit _ qas) -> do
         qas <- traverse subst qas
-        if HashSet.member (mapMaybe termVal qas) setOfVals
-          then pure ()
-          else
-            -- Maybe `qas` in not in the set of values because the terms are don't yet have values.
-            -- In that case, we revert to the default behavior.
-            -- Because we stop evaluating when we reach the first solution, that is only evaluated if necessary.
-            -- TODO: This can probably be optimized, but I can't think of a better and simplier way than that.
-            compilePredDefault rules arg
+        let f term (allVals, vals) = case term of
+                Val v -> (allVals, v:vals)
+                Var _ -> (False, vals)
+        let (allVals, vals) = foldr f (True, []) qas
+        -- This only works if the unification is being done between only values.
+        -- In that case, if the values of qas are in the set, the predicate succeeds.
+        -- Otherwise, it fails.
+        if allVals
+          then guard (HashSet.member vals setOfVals)
+          -- If qas aren't all values, we can't use the set and must fallback to the default behavior.
+          -- This is because in this case the variables will be unified with the values, so it's not just
+          -- a guard.
+          else compilePredDefault rules arg
     else compilePredDefault rules
   where
-
     -- A fact is a rule that has no body and matches directly on values
     isFact :: Rule a -> Bool
-    isFact rule = null (ruleBody rule) && all (not . termIsVar) (litTerms $ ruleLit rule)
+    isFact rule = null (ruleBody rule) && all termIsVal (litTerms $ ruleLit rule)
 
     ruleBody :: Rule a -> [BodyLit a]
     ruleBody  (Rule _lit body) = body
@@ -315,9 +320,9 @@ compilePred rules =
     termVal (Val v) = Just v
     termVal (Var _) = Nothing
 
-    termIsVar :: Term a -> Bool
-    termIsVar (Var _) = True
-    termIsVar _ = False
+    termIsVal :: Term a -> Bool
+    termIsVal (Val _) = True
+    termIsVal (Var _) = False
 
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
 --
