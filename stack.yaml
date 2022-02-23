@@ -6,3 +6,4 @@ packages:
 extra-deps:
   - qq-literals-0.1.0.1
   - jsonpath-0.1.0.1
+  - data-partition-0.3.0.0@sha256:f48fc331e8165862d8dd4eabf7c7891d1a2fa02f9017a4246d6aa24f503da37d,706
