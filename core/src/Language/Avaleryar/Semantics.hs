@@ -86,8 +86,8 @@ import Language.Avaleryar.Syntax
 -- | A native predicate carries not just its evaluation function, but also its signature, so it may
 -- be consulted when new assertions are submitted in order to mode-check them.
 data NativePred = NativePred
-  { nativePred :: Lit EVar -> Avaleryar ()
-  , nativeSig  :: ModedLit
+  { nativePred :: !(Lit EVar -> Avaleryar ())
+  , nativeSig  :: !ModedLit
   } deriving Generic
 
 instance NFData NativePred
@@ -109,8 +109,8 @@ instance NFData NativeDb
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
 data Db = Db
-  { rulesDb  :: RulesDb
-  , nativeDb :: NativeDb
+  { rulesDb  :: !RulesDb
+  , nativeDb :: !NativeDb
   } deriving (Generic)
 
 instance Semigroup Db where
@@ -135,9 +135,9 @@ loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
-  { env   :: Env   -- ^ The accumulated substitution
-  , epoch :: Epoch -- ^ A counter for generating fresh variables
-  , db    :: Db    -- ^ The database of compiled predicates
+  { env   :: !Env   -- ^ The accumulated substitution
+  , epoch :: !Epoch -- ^ A counter for generating fresh variables
+  , db    :: !Db    -- ^ The database of compiled predicates
   } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
