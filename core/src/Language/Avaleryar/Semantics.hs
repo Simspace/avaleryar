@@ -70,8 +70,10 @@ import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
+import qualified Data.HashSet                 as HashSet
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
+import           Data.Maybe
 import           Data.String
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
@@ -261,11 +263,8 @@ unifyArgs [] []         = pure ()
 unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
 unifyArgs _ _           = empty
 
--- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
--- given a query that applies, and that the rules it was handed are all for the same predicate.
--- This is not the function you want.  FIXME: Suck less
-compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
-compilePred rules (Lit _ qas) = do
+compilePredDefault :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePredDefault rules (Lit _ qas) = do
   rt@RT {..} <- getRT
   putRT rt {epoch = succ epoch}
   let rules' = fmap (EVar epoch) <$> rules
@@ -274,14 +273,60 @@ compilePred rules (Lit _ qas) = do
         traverse_ resolve body
   msum $ go <$> rules'
 
+-- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
+-- given a query that applies, and that the rules it was handed are all for the same predicate.
+-- This is not the function you want.
+compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePred rules =
+  -- If the rules are all facts, we can efficiently check
+  if (all isFact rules)
+    then
+      let setOfVals = HashSet.fromList $ fmap (mapMaybe termVal . litTerms . ruleLit) rules
+      in \arg@(Lit _ qas) -> do
+        qas <- traverse subst qas
+        if HashSet.member (mapMaybe termVal qas) setOfVals
+          then pure ()
+          else
+            -- Maybe `qas` in not in the set of values because the terms are don't yet have values.
+            -- In that case, we revert to the default behavior.
+            -- Because we stop evaluating when we reach the first solution, that is only evaluated if necessary.
+            -- TODO: This can probably be optimized, but I can't think of a better and simplier way than that.
+            compilePredDefault rules arg
+    else compilePredDefault rules
+  where
+
+    -- A fact is a rule that has no body and matches directly on values
+    isFact :: Rule a -> Bool
+    isFact rule = null (ruleBody rule) && all (not . termIsVar) (litTerms $ ruleLit rule)
+
+    ruleBody :: Rule a -> [BodyLit a]
+    ruleBody  (Rule _lit body) = body
+
+    ruleLit :: Rule a -> Lit a
+    ruleLit  (Rule lit _body) = lit
+
+    litTerms :: Lit a -> [Term a]
+    litTerms (Lit _pred terms) = terms
+
+    ruleTerms :: Rule a -> [Term a]
+    ruleTerms = litTerms . ruleLit
+
+    termVal :: Term a -> Maybe Value
+    termVal (Val v) = Just v
+    termVal (Var _) = Nothing
+
+    termIsVar :: Term a -> Bool
+    termIsVar (Var _) = True
+    termIsVar _ = False
+
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
 --
 -- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
 compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
 compileRules assn rules =
-  fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
-                                           | r@(Rule (Lit p _) _) <- rules]
+  fmap compilePred $ Map.fromListWith (++) [ (p, [emplaceCurrentAssertion assn r])
+                                           | r@(Rule (Lit p _) _) <- rules ]
 
 emplaceCurrentAssertion :: Text -> Rule v -> Rule v
 emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
