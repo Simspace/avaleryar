@@ -64,8 +64,10 @@ import           Text.PrettyPrint.Leijen.Text
 import           Text.Read (readMaybe)
 
 newtype Value = T Text
-    deriving (Eq, Ord, Read, Show, Generic)
+  deriving (Eq, Ord, Read, Show, Generic)
 
+-- COMPLETE Pragma is necessary because the exhausiveness checker doesn't work at all with pattern synonyms.
+-- See https://gitlab.haskell.org/ghc/ghc/-/wikis/pattern-synonyms/complete-sigs
 {-# COMPLETE I, B, T #-}
 pattern I :: Int -> Value
 pattern I i <- T (readMaybe . T.unpack -> Just i) where
@@ -79,17 +81,6 @@ textToBool :: Text -> Maybe Bool
 textToBool "#t" = Just True
 textToBool "#f" = Just False
 textToBool _    = Nothing
-
--- COMPLETE Pragma is necessary because the exhausiveness checker doesn't work at all with pattern synonyms.
--- See https://gitlab.haskell.org/ghc/ghc/-/wikis/pattern-synonyms/complete-sigs
--- pattern IpAddr :: ToFromWords word => word -> word -> word -> word -> IpAddr word
--- pattern IpAddr w1 w2 w3 w4 <- IpAddrInternal (toWords -> (w1, w2, w3, w4)) where
---   IpAddr w1 w2 w3 w4 = IpAddrInternal $ fromWords w1 w2 w3 w4
--- pattern Smarter{ nonneg } <- Pos nonneg  where
---   Smarter x = if x >= 0 then (Pos x) else (Neg x)
--- pattern Smarter{ nonneg } <- Pos nonneg  where
---   Smarter x | x >= 0    = (Pos x)
---             | otherwise = (Neg x)
 
 instance NFData Value
 instance Hashable Value
