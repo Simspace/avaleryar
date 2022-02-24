@@ -27,7 +27,7 @@ data ModeError
   | FVModeRestricted RawVar
   | FVInAssertionPosition RawVar
   | FVInRuleHead RawVar
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Show)
 
 instance Pretty ModeError where
   pretty (UnboundNativeAssertion assn)        = "unbound native assertion: " <> squotes (pretty assn)

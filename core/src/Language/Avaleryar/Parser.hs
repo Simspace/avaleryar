@@ -19,6 +19,7 @@ module Language.Avaleryar.Parser
 import           Control.Monad              (void)
 import           Data.Bifunctor             (first)
 import           Data.Either                (partitionEithers)
+import qualified Data.Interned              as Interned
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Text.IO               as T
@@ -65,9 +66,9 @@ sym = lexeme (T.pack <$> go) <?> "symbol"
 
 value :: Parser Value
 value =     I <$> L.signed (pure ()) L.decimal
-        <|> T <$> stringLiteral
-        <|> T <$> sym -- unquoted symbols
-        <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
+        <|> T <$> fmap Interned.intern stringLiteral
+        <|> T <$> fmap Interned.intern sym -- unquoted symbols
+        <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False)
 
 ident :: Parser Text
 ident = sym <?> "identifer"
@@ -183,4 +184,3 @@ qry = qqLiteral queryQQParser 'queryQQParser
 
 fct :: QuasiQuoter
 fct = qqLiteral factQQParser 'factQQParser
-

@@ -50,7 +50,7 @@ data PDPError
   | VarInQueryResults TextVar
   | ParseError String
   | SubmitError SubmitError
-    deriving (Eq, Ord, Read, Show, Typeable)
+    deriving (Eq, Ord, Show, Typeable)
 
 instance Exception PDPError
 
