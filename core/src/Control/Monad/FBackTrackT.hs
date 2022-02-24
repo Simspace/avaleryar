@@ -47,10 +47,13 @@ newtype Stream m a = Stream { unStream :: m (StreamE m a) }
 
 instance Monad m => Applicative (Stream m) where
   pure = return
+  {-# INLINE pure #-}
   (<*>) = ap
+  {-# INLINE2 (<*>) #-}
 
 instance Monad m => Monad (Stream m) where
   return = Stream . return . One
+  {-# INLINE return #-}
 
   m >>= f = Stream (unStream m >>= bind)
     where
@@ -58,16 +61,22 @@ instance Monad m => Monad (Stream m) where
     bind (One a)        = unStream $ f a
     bind (Choice a r)   = unStream $ f a `mplus` (yield (r >>= f))
     bind (Incomplete i) = return $ Incomplete (i >>= f)
+    {-# INLINE bind #-}
+  {-# INLINE (>>=) #-}
 
 yield :: Monad m => Stream m a -> Stream m a
 yield = Stream . return . Incomplete
+{-# INLINE yield #-}
 
 instance Monad m => Alternative (Stream m) where
   empty = mzero
+  {-# INLINE empty #-}
   (<|>) = mplus
+  {-# INLINE (<|>) #-}
 
 instance Monad m => MonadPlus (Stream m) where
   mzero = Stream $ return Nil
+  {-# INLINE mzero #-}
 
   mplus m1 m2 = Stream (unStream m1 >>= mplus')
    where
@@ -82,19 +91,25 @@ instance Monad m => MonadPlus (Stream m) where
         Choice b r'  -> return $ Choice b (mplus i r')
         -- Choice _ _ -> Incomplete (mplus r' i)
         Incomplete j -> return . Incomplete . yield $ mplus i j
+  {-# INLINE mplus #-}
 
 instance Monad m => Fail.MonadFail (Stream m) where
   fail _ = mzero
+  {-# INLINE fail #-}
 
 instance MonadTrans Stream where
-    lift m = Stream (m >>= return . One)
+  lift m = Stream (m >>= return . One)
+  {-# INLINE lift #-}
 
 instance MonadIO m => MonadIO (Stream m) where
-    liftIO = lift . liftIO
+  liftIO = lift . liftIO
+  {-# INLINE liftIO #-}
 
 instance MonadState s m => MonadState s (Stream m) where
   get  = lift get
+  {-# INLINE get #-}
   put s = lift (put s)
+  {-# INLINE put #-}
 
 -- run the Monad, to a specific depth, and give at most
 -- specified number of answers. The monad `m' may be strict (like IO),
@@ -193,12 +208,15 @@ observe m = unStream m >>= pick1
         pick1 (One a)        = return a
         pick1 (Choice a _)   = return a
         pick1 (Incomplete m) = observe m
+{-# INLINE observe #-}
 
 class Monad m => MonadYield m where
   yield' :: m a -> m a
 
 instance Monad m => MonadYield (Stream m) where
   yield' = yield
+  {-# INLINE yield' #-}
 
 instance MonadYield m => MonadYield (StateT s m) where
   yield' (StateT sma) = StateT (yield' . sma)
+  {-# INLINE yield' #-}
