@@ -20,11 +20,13 @@ main :: IO ()
 main = defaultMain benchmarks
 
 benchmarks :: [Benchmark]
-benchmarks = [ bgroup "clique" [clique n | n <- [5, 10, 25, 40]]
-             , bgroup "line"   [line   n | n <- [5, 10, 25, 40]]
-             , bgroup "loop"   [loop   n | n <- [50, 100, 500, 1000]]
-             , bgroup "tight"  [tight  n | n <- [50, 100, 500, 1000]]
-             , bgroup "parse"  [parse  n | n <- [50, 100, 500, 1000]]
+benchmarks = [ bgroup "clique"     [clique     n | n <- [5, 10, 25, 40]]
+             , bgroup "cliqueText" [cliqueText n | n <- [5, 10, 25, 40]]
+             , bgroup "line"       [line       n | n <- [5, 10, 25, 40]]
+             , bgroup "lineText"   [lineText   n | n <- [5, 10, 25, 40]]
+             , bgroup "loop"       [loop       n | n <- [50, 100, 500, 1000]]
+             , bgroup "tight"      [tight      n | n <- [50, 100, 500, 1000]]
+             , bgroup "parse"      [parse      n | n <- [50, 100, 500, 1000]]
              ]
 
 -- | Generate a complete graph of size @n@ and try to find a path from the first node to the last.
@@ -58,6 +60,21 @@ clique n = do
     let Right cfg = pdpConfigRules mempty path
     newHandle cfg {maxDepth = 4000}
 
+cliqueText :: Int -> Benchmark
+cliqueText n = do
+  let path = [rls| path(?x, ?y) :- application says edge(?x, ?y).
+                   path(?x, ?z) :- path(?x, ?y), path(?y, ?z). |]
+      edges = [lit "edge" [val . pack $ show x, val . pack $ show y]
+                 | x <- [1..n]
+                 , y <- [1..n]]
+      go hdl = bench (show n) $ whnfIO $ do
+        res <- checkQuery hdl edges "path" [val $ pack "1", val . pack $ show n]
+        either (error . show) (bool (error "no path found") (pure True)) res
+
+  flip env go $ do
+    let Right cfg = pdpConfigRules mempty path
+    newHandle cfg {maxDepth = 4000}
+
 -- | Generates a linear sequence of @n@ facts and tries to find a path from the first node to the
 -- last.  It uses a cons-list shaped @path@ rule.  The @application@ assertion looks like this:
 --
@@ -75,6 +92,20 @@ line n = do
                  | (x, y) <- zip [1..pred n] [2..n]]
       go hdl = bench (show n) $ whnfIO $ do
         res <- checkQuery hdl edges "path" [val (1 :: Int), val n]
+        either (error . show) (bool (error "no path found") (pure True)) res
+
+  flip env go $ do
+    let Right cfg = pdpConfigRules mempty path
+    newHandle cfg {maxDepth = 4000}
+
+lineText :: Int -> Benchmark
+lineText n = do
+  let path = [rls| path(?x, ?y) :- application says edge(?x, ?y).
+                   path(?x, ?z) :- application says edge(?x, ?y), path(?y, ?z). |]
+      edges = [lit "edge" [val . pack $ show x, val . pack $ show y]
+                 | (x, y) <- zip [1..pred n] [2..n]]
+      go hdl = bench (show n) $ whnfIO $ do
+        res <- checkQuery hdl edges "path" [val $ pack "1", val . pack $ show n]
         either (error . show) (bool (error "no path found") (pure True)) res
 
   flip env go $ do
