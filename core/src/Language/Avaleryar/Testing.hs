@@ -53,6 +53,7 @@ module Language.Avaleryar.Testing
 
 import           Data.Bool                    (bool)
 import           Data.Foldable                (for_, toList)
+import qualified Data.Interned                as Interned
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, splitOn)
 import           Data.Void                    (vacuous)
@@ -93,9 +94,9 @@ parseTestCase (Directive (Lit (Pred "test" _) (tn:dbs)) tqs) = do
 parseTestCase _ = Nothing
 
 parseDb :: (Text, Text) -> Directive -> Maybe TestDb
-parseDb (alias, assn) (Directive (Lit (Pred "db" _) [Val (T dbn)]) fs) | assn == dbn =
+parseDb (alias, assn) (Directive (Lit (Pred "db" _) [Val (T dbn)]) fs) | Interned.intern assn == dbn =
   Just ([(alias, fmap factToRule fs)], mempty)
-parseDb (alias, assn) (Directive (Lit (Pred "native" _) [Val (T dbn)]) fs) | assn == dbn =
+parseDb (alias, assn) (Directive (Lit (Pred "native" _) [Val (T dbn)]) fs) | Interned.intern assn == dbn =
   Just (mempty, mkNativeDb alias $ factsToNative fs)
 parseDb _ _ = Nothing
 
@@ -207,7 +208,3 @@ runTestFile conf k tf = do
   case parsed of
     Left err -> pure (Left err)
     Right ts -> Right <$> traverse gatherResults ts
-
-
-
-

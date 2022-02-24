@@ -71,6 +71,8 @@ import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
 import qualified Data.HashSet                 as HashSet
+import qualified Data.Interned                as Interned
+import qualified Data.Interned.Internal.Text  as Interned
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.Maybe
@@ -349,10 +351,10 @@ compileQuery' :: String -> Query -> Avaleryar (Lit EVar)
 compileQuery' assn (Lit (Pred p _) args) = compileQuery assn p args
 
 insertRuleAssertion :: Text -> Map Pred (Lit EVar -> Avaleryar ()) -> RulesDb -> RulesDb
-insertRuleAssertion assn rules = RulesDb . Map.insert (T assn) rules . unRulesDb
+insertRuleAssertion assn rules = RulesDb . Map.insert (toValue assn) rules . unRulesDb
 
 retractRuleAssertion :: Text -> RulesDb -> RulesDb
-retractRuleAssertion assn = RulesDb . Map.delete (T assn) . unRulesDb
+retractRuleAssertion assn = RulesDb . Map.delete (toValue assn) . unRulesDb
 
 ---------------------
 

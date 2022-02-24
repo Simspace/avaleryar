@@ -45,11 +45,13 @@ name of the assertion in which @may\/1@ is defined).  In brief:
 
 module Language.Avaleryar.Syntax where
 
-import           Control.DeepSeq              (NFData)
+import           Control.DeepSeq              (NFData(rnf))
 import           Data.Char                    (isSpace)
 import           Data.Function                (on)
 import           Data.Functor.Const           (Const(..))
 import           Data.Hashable                (Hashable(hashWithSalt))
+import qualified Data.Interned                as Interned
+import qualified Data.Interned.Internal.Text  as Interned
 import           Data.Map                     (Map)
 import           Data.String
 import           Data.Text                    (Text)
@@ -62,11 +64,15 @@ import           Text.PrettyPrint.Leijen.Text
 
 data Value
   = I Int
-  | T Text
+  | T Interned.InternedText
   | B Bool
-    deriving (Eq, Ord, Read, Show, Generic)
+    deriving (Eq, Ord, Show, Generic)
 
-instance NFData Value
+instance NFData Value where
+  rnf (I i) = rnf i
+  rnf (T t) = rnf (Interned.unintern t)
+  rnf (B b) = rnf b
+
 instance Hashable Value
 
 instance IsString Value where
@@ -75,12 +81,12 @@ instance IsString Value where
 instance Pretty Value where
   pretty (I n) = pretty n
   pretty (B b) = if b then "#t" else "#f"
-  pretty (T t) = if T.any isSpace t
-                 then pretty (show t) -- want the quotes/escaping
-                 else pretty t        -- display as a symbol
+  pretty (T t) = if T.any isSpace (Interned.unintern t)
+                 then pretty (show $ Interned.unintern t) -- want the quotes/escaping
+                 else pretty (Interned.unintern t)        -- display as a symbol
 
 -- | A predicate is identified by its name and arity (i.e., the predicate of the literal @foo(bar, ?baz)@ is @foo/2@)
-data Pred = Pred Text Int deriving (Eq, Ord, Read, Show, Generic)
+data Pred = Pred Text Int deriving (Eq, Ord, Show, Generic)
 
 instance NFData Pred
 instance Hashable Pred
@@ -92,7 +98,7 @@ instance Pretty Pred where
 -- provide a bit of safety by keeping us from crossing various streams (e.g., separating runtime
 -- unification variables from raw variables straight out of the parser helps avoid a bit of unwanted
 -- variable capture).
-data Term v = Val Value | Var v deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+data Term v = Val Value | Var v deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Term v)
 instance Hashable v => Hashable (Term v)
@@ -103,7 +109,7 @@ instance Pretty v => Pretty (Term v) where
 
 -- | A literal is identified by a 'Pred' and a list of 'Term's, where the arity in the 'Pred' is the
 -- same as the length of the list of 'Term's in the argument list.
-data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Lit v)
 instance Hashable v => Hashable (Lit v)
@@ -117,7 +123,7 @@ lit pn as = Lit (Pred pn (length as)) as
 
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
-data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+data ARef v = ARNative Text | ARTerm (Term v) | ARCurrent deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (ARef v)
 instance Hashable v => Hashable (ARef v)
@@ -136,7 +142,7 @@ prettyAssertion assn ps = pretty assn
 -- When no assertion appears in the concrete syntax, the parser inserts a reference to the assertion
 -- currently being parsed.
 data BodyLit v = Says (ARef v) (Lit v)
-  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (BodyLit v)
 instance Hashable v => Hashable (BodyLit v)
@@ -146,7 +152,7 @@ instance Pretty v => Pretty (BodyLit v) where
 
 -- | A rule has a head and a body made of 'BodyLit's.
 data Rule v = Rule (Lit v) [BodyLit v]
-  deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Rule v)
 instance Hashable v => Hashable (Rule v)
@@ -265,8 +271,8 @@ instance Valuable Value where
   fromValue = Just
 
 instance Valuable Text where
-  toValue = T
-  fromValue (T a) = Just a
+  toValue = T . Interned.intern
+  fromValue (T a) = Just (Interned.unintern a)
   fromValue _     = Nothing
 
 instance Valuable Int  where

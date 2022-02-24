@@ -10,6 +10,7 @@ library:
     - deepseq
     - filepath
     - hashable
+    - intern
     - megaparsec
     - mtl
     - qq-literals
