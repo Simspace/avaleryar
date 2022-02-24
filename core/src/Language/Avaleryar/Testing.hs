@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE OverloadedLists   #-}
 -- | A small unit-testing framework exploiting 'Directive's.  This module probably belongs in a
 -- different package, but is provided here because it's convenient, helpful and it provides an
 -- example (though perhaps not an exemplar) of how directives can be used to provide extended
@@ -55,6 +56,8 @@ import           Data.Bool                    (bool)
 import           Data.Foldable                (for_, toList)
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, splitOn)
+import           Data.Vector                  (Vector, (!?))
+import qualified Data.Vector                  as Vector
 import           Data.Void                    (vacuous)
 import           Text.PrettyPrint.Leijen.Text hiding (bool, (<$>))
 
@@ -85,12 +88,15 @@ parseTestAssertion t = fromTerm t >>= go . splitOn "="
         go _             = Nothing
 
 parseTestCase :: Directive -> Maybe TestCase
-parseTestCase (Directive (Lit (Pred "test" _) (tn:dbs)) tqs) = do
-  let testQueries = vacuous <$> tqs
-  testName  <- fromTerm tn
-  testAssns <- traverse parseTestAssertion dbs
-  pure TestCase {..}
-parseTestCase _ = Nothing
+parseTestCase (Directive (Lit (Pred "test" _) terms) tqs) = do
+  case terms !? 0 of
+    Nothing -> Nothing
+    Just term -> do
+      let dbs = Vector.drop 1 terms
+          testQueries = vacuous <$> tqs
+      testName  <- fromTerm term
+      testAssns <- Vector.toList <$> traverse parseTestAssertion dbs
+      pure TestCase {..}
 
 parseDb :: (Text, Text) -> Directive -> Maybe TestDb
 parseDb (alias, assn) (Directive (Lit (Pred "db" _) [Val (T dbn)]) fs) | assn == dbn =
@@ -107,7 +113,7 @@ parseDb _ _ = Nothing
 factsToNative :: [Fact] -> [NativePred]
 factsToNative fs = [NativePred (compilePred rs) (modeFor p) | (p, rs) <- Map.toList preds]
   where preds = Map.fromListWith (<>) [(p, [factToRule f]) | f@(Lit p _) <- fs]
-        modeFor p@(Pred _ n) = Lit p (replicate n (Var outMode))
+        modeFor p@(Pred _ n) = Lit p (Vector.replicate n (Var outMode))
 
 dbForTestCase :: [Directive] -> TestCase -> TestDb
 dbForTestCase dirs TestCase {..} = foldMap go testAssns
@@ -155,7 +161,7 @@ runTest hdl t = go (missingAssertions t)
         go as = pure . Left . MissingAssertions $ as
 
 runTestQuery :: PDPHandle -> [Fact] -> Query -> IO TestResult
-runTestQuery hdl app (Lit (Pred p _) as) = resultify <$> checkQuery hdl app p as
+runTestQuery hdl app (Lit (Pred p _) as) = resultify <$> checkQuery hdl app p (Vector.toList as)
   where resultify = either Error (bool Fail Pass)
 
 runTestQuery' :: PDPHandle -> [Fact] -> Query -> IO (Query, TestResult)
@@ -207,7 +213,3 @@ runTestFile conf k tf = do
   case parsed of
     Left err -> pure (Left err)
     Right ts -> Right <$> traverse gatherResults ts
-
-
-
-

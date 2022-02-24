@@ -12,6 +12,7 @@ import           Data.Foldable
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.Text                    (Text, pack)
+import qualified Data.Vector                  as Vector
 import           Text.Megaparsec              (sourcePosPretty)
 import           Text.PrettyPrint.Leijen.Text (Pretty(..), colon, squotes)
 
@@ -73,7 +74,7 @@ modeCheckRule :: Monad m => Rule RawVar -> ModeCheck m ()
 modeCheckRule (Rule hd body) = traverse_ modeCheckBody body >> modeCheckHead hd
   where modeCheckBody (ARNative assn `Says` Lit p bas) = do
           Lit _ mas <- getNativeMode assn p
-          zipWithM_ modeCheckArg mas bas
+          Vector.zipWithM_ modeCheckArg mas bas
         modeCheckBody (ARTerm aref `Says` Lit _ bas) = do
           case aref of
             Var v -> grounded v >>= bool (throwError $ FVInAssertionPosition v) (pure ())

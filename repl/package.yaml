@@ -14,6 +14,7 @@ library:
     - read-editor
     - repline
     - text
+    - vector
     - wl-pprint-text
 
 executables:

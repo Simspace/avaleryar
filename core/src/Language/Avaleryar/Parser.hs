@@ -22,6 +22,8 @@ import           Data.Either                (partitionEithers)
 import           Data.Text                  (Text)
 import qualified Data.Text                  as T
 import qualified Data.Text.IO               as T
+import           Data.Vector                (Vector)
+import qualified Data.Vector                as Vector
 import           Data.Void
 import           Language.Haskell.TH.Quote  (QuasiQuoter)
 import           QQLiterals
@@ -67,7 +69,7 @@ value :: Parser Value
 value =     I <$> L.signed (pure ()) L.decimal
         <|> T <$> stringLiteral
         <|> T <$> sym -- unquoted symbols
-        <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False) 
+        <|> B <$> (string "#t" *> pure True <|> string "#f" *> pure False)
 
 ident :: Parser Text
 ident = sym <?> "identifer"
@@ -84,7 +86,8 @@ lit :: Parser (Lit RawVar)
 lit = label "literal" $ do
   ftor <- ident
   args <- concat <$> optional (parens (term `sepBy` comma))
-  pure $ Lit (Pred ftor (length args)) args
+  let argsVector = Vector.fromList args
+  pure $ Lit (Pred ftor (Vector.length argsVector)) argsVector
 
 -- | A specialized version of 'lit' that fails faster for facts.  Like 'rule' and unlike 'lit',
 -- parses a trailing 'dot'.
@@ -93,14 +96,16 @@ fact = label "fact" $ do
   ftor <- ident
   args <- fmap Val <$> parens (value `sepBy` comma)
   dot
-  pure $ Lit (Pred ftor (length args)) args
+  let argsVector = Vector.fromList args
+  pure $ Lit (Pred ftor (Vector.length argsVector)) argsVector
 
 -- | Like 'fact', but without the trailing 'dot'.  FIXME: Suck less.
 fact' :: Parser Fact
 fact' = label "fact" $ do
   ftor <- ident
   args <- fmap Val <$> parens (value `sepBy` comma)
-  pure $ Lit (Pred ftor (length args)) args
+  let argsVector = Vector.fromList args
+  pure $ Lit (Pred ftor (Vector.length argsVector)) argsVector
 
 aref :: Parser (ARef RawVar)
 aref = colon *> (ARNative <$> sym) <|> ARTerm <$> term
@@ -112,9 +117,9 @@ bodyLit :: Parser (BodyLit RawVar)
 bodyLit = Says <$> (try (aref <* symbol "says") <|> currentAssertion) <*> lit
 
 rule :: Parser (Rule RawVar)
-rule = Rule <$> lit <*> (body <|> dot *> pure [])
+rule = Rule <$> lit <*> (body <|> dot *> pure mempty)
   where -- bodyLits = ( (try (term val *> symbol "says") *> lit val) <|> lit val) `sepBy1` comma
-        bodyLits = bodyLit `sepBy1` comma
+        bodyLits = Vector.fromList <$> bodyLit `sepBy1` comma
         body = symbol ":-" *> label "rule body" bodyLits <* dot
 
 directive :: Parser Directive
@@ -183,4 +188,3 @@ qry = qqLiteral queryQQParser 'queryQQParser
 
 fct :: QuasiQuoter
 fct = qqLiteral factQQParser 'factQQParser
-
