@@ -5,6 +5,7 @@
 
 module Main where
 
+import Control.Monad.Except
 import Criterion.Main
 import Data.Bool
 import Data.Text (pack)
@@ -55,7 +56,7 @@ clique n = do
         either (error . show) (bool (error "no path found") (pure True)) res
 
   flip env go $ do
-    let Right cfg = pdpConfigRules mempty path
+    Right cfg <- runExceptT $ pdpConfigRules mempty path
     newHandle cfg {maxDepth = 4000}
 
 -- | Generates a linear sequence of @n@ facts and tries to find a path from the first node to the
@@ -78,7 +79,7 @@ line n = do
         either (error . show) (bool (error "no path found") (pure True)) res
 
   flip env go $ do
-    let Right cfg = pdpConfigRules mempty path
+    Right cfg <- runExceptT $ pdpConfigRules mempty path
     newHandle cfg {maxDepth = 4000}
 
 -- | Generates a loop of five rules (@e@ implies @d@ implies @c@ implies @b@ implies @a@ implies
@@ -96,7 +97,7 @@ loop n = do
         either (error . show) (bool (pure True) (error "loop shouldn't succeed")) res
 
   flip env go $ do
-    let Right cfg = pdpConfigRules mempty rules
+    Right cfg <- runExceptT $ pdpConfigRules mempty rules
     newHandle cfg {maxDepth = n}
 
 -- | As 'loop', but with arity 0 rules.  This should be a better measure of the overhead of the
@@ -110,7 +111,7 @@ tight n = do
         either (error . show) (bool (pure True) (error "tight shouldn't succeed")) res
 
   flip env go $ do
-    let Right cfg = pdpConfigRules mempty rules
+    Right cfg <- runExceptT $ pdpConfigRules mempty rules
     newHandle cfg {maxDepth = n}
 
 -- | Generates @n@ rules, pretty prints them, then times how long it takes to parse them.  The text

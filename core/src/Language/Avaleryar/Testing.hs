@@ -92,26 +92,26 @@ parseTestCase (Directive (Lit (Pred "test" _) (tn:dbs)) tqs) = do
   pure TestCase {..}
 parseTestCase _ = Nothing
 
-parseDb :: (Text, Text) -> Directive -> Maybe TestDb
+parseDb :: (Text, Text) -> Directive -> IO (Maybe TestDb)
 parseDb (alias, assn) (Directive (Lit (Pred "db" _) [Val (T dbn)]) fs) | assn == dbn =
-  Just ([(alias, fmap factToRule fs)], mempty)
+  pure $ Just ([(alias, fmap factToRule fs)], mempty)
 parseDb (alias, assn) (Directive (Lit (Pred "native" _) [Val (T dbn)]) fs) | assn == dbn =
-  Just (mempty, mkNativeDb alias $ factsToNative fs)
-parseDb _ _ = Nothing
+  Just . (mempty,) . mkNativeDb alias <$> factsToNative fs
+parseDb _ _ = pure Nothing
 
 -- Have to group up all the facts to pass to 'compilePred' or else they won't succeed more than once
 -- (i.e., @native(stuff) may(read), may(write).@ can't succeed on both @may@s without this annoying
 -- grouping pass.
 --
 -- TODO: The fake mode might be too strong, in which case we'd need some other plan?
-factsToNative :: [Fact] -> [NativePred]
-factsToNative fs = [NativePred (compilePred rs) (modeFor p) | (p, rs) <- Map.toList preds]
+factsToNative :: [Fact] -> IO [NativePred]
+factsToNative fs = sequence [NativePred <$> compilePred rs <*> pure (modeFor p) | (p, rs) <- Map.toList preds]
   where preds = Map.fromListWith (<>) [(p, [factToRule f]) | f@(Lit p _) <- fs]
         modeFor p@(Pred _ n) = Lit p (replicate n (Var outMode))
 
-dbForTestCase :: [Directive] -> TestCase -> TestDb
+dbForTestCase :: [Directive] -> TestCase -> IO TestDb
 dbForTestCase dirs TestCase {..} = foldMap go testAssns
-  where go p = maybe mempty id $ foldMap (parseDb p) dirs
+  where go p = maybe mempty id <$> foldMap (parseDb p) dirs
 
 -- | Find assertions used by the 'Test' that aren't available in its 'TestDb'.
 --
@@ -180,10 +180,10 @@ withTestHandle conf k t@(Test _ (assns, ndb)) = do
 withTestHandle_ :: PDPConfig -> (PDPHandle -> IO ()) -> Test -> IO TestResults
 withTestHandle_ p k t = fst <$> withTestHandle p k t
 
-extractTests :: [Directive] -> [Test]
-extractTests dirs = go <$> cases
+extractTests :: [Directive] -> IO [Test]
+extractTests dirs = sequence (go <$> cases)
   where cases = foldMap (toList . parseTestCase) dirs
-        go tc = Test tc $ dbForTestCase dirs tc
+        go tc = Test tc <$> dbForTestCase dirs tc
 
 -- | Turn a 'Rule' that's really a fact into a 'Fact' in fact.  Hideously unsafe if you don't
 -- already know for sure it'll succeed.  This function really shouldn't escape this module.
@@ -198,7 +198,7 @@ appAssertion :: Test -> [Fact]
 appAssertion = fmap ruleToFact . concat . lookup "application" . fst . testDb
 
 parseTestFile :: FilePath -> IO (Either String [Test])
-parseTestFile fp = fmap (extractTests . fst) <$> parseFile' fp
+parseTestFile fp = either (pure . Left) (fmap Right . extractTests . fst) =<< parseFile' fp
 
 runTestFile :: PDPConfig -> (PDPHandle -> IO ()) -> FilePath -> IO (Either String [(Text, TestResults)])
 runTestFile conf k tf = do
@@ -207,7 +207,3 @@ runTestFile conf k tf = do
   case parsed of
     Left err -> pure (Left err)
     Right ts -> Right <$> traverse gatherResults ts
-
-
-
-
