@@ -6,11 +6,13 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 {-|
 
@@ -59,12 +61,26 @@ import           GHC.Generics                 (Generic)
 import           Text.Megaparsec              (SourcePos(..), pos1, unPos)
 import           Text.PrettyPrint.Leijen.Text
     (Doc, Pretty(..), brackets, colon, dot, empty, group, hsep, line, nest, parens, punctuate, space, vsep)
+import           Text.Read (readMaybe)
 
-data Value
-  = I Int
-  | T Text
-  | B Bool
-    deriving (Eq, Ord, Read, Show, Generic)
+newtype Value = T Text
+  deriving (Eq, Ord, Read, Show, Generic)
+
+-- COMPLETE Pragma is necessary because the exhausiveness checker doesn't work at all with pattern synonyms.
+-- See https://gitlab.haskell.org/ghc/ghc/-/wikis/pattern-synonyms/complete-sigs
+{-# COMPLETE I, B, T #-}
+pattern I :: Int -> Value
+pattern I i <- T (readMaybe . T.unpack -> Just i) where
+  I i = T . T.pack $ show i
+
+pattern B :: Bool -> Value
+pattern B b <- T (textToBool -> Just b) where
+  B b = T (if b then "#t" else "#f")
+
+textToBool :: Text -> Maybe Bool
+textToBool "#t" = Just True
+textToBool "#f" = Just False
+textToBool _    = Nothing
 
 instance NFData Value
 instance Hashable Value
@@ -73,8 +89,6 @@ instance IsString Value where
   fromString = T . fromString
 
 instance Pretty Value where
-  pretty (I n) = pretty n
-  pretty (B b) = if b then "#t" else "#f"
   pretty (T t) = if T.any isSpace t
                  then pretty (show t) -- want the quotes/escaping
                  else pretty t        -- display as a symbol
@@ -267,7 +281,6 @@ instance Valuable Value where
 instance Valuable Text where
   toValue = T
   fromValue (T a) = Just a
-  fromValue _     = Nothing
 
 instance Valuable Int  where
   toValue = I
