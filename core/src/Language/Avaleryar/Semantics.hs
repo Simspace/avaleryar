@@ -72,6 +72,7 @@ import           Control.Monad.State
 import           Data.Foldable
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
+import qualified Data.Partition               as Partition
 import           Data.String
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
@@ -135,7 +136,7 @@ loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
-  { env   :: Env   -- ^ The accumulated substitution
+  { env   :: Partition.Partition (Term EVar)   -- ^ The accumulated substitution
   , epoch :: Epoch -- ^ A counter for generating fresh variables
   , db    :: Db    -- ^ The database of compiled predicates
   } deriving (Generic)
@@ -184,7 +185,7 @@ runAvaleryar' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
 runAvaleryar' d b db ava = do
   start <- getMonotonicTime
   res   <- runM' (Just d) (Just b)
-           . flip evalStateT (RT mempty 0 db)
+           . flip evalStateT (RT Partition.empty 0 db)
            . unAvaleryar $ ava
   end   <- getMonotonicTime
   case res of
@@ -203,16 +204,16 @@ putRT = Avaleryar . put
 -- | Try to find a binding for the given variable in the current substitution.
 --
 -- NB: The resulting 'Term' may still be a variable.
-lookupEVar :: EVar -> Avaleryar (Term EVar)
-lookupEVar ev = do
-  RT {..} <- getRT
-  alookup ev env
+-- lookupEVar :: EVar -> Avaleryar (Term EVar)
+-- lookupEVar ev = do
+--   RT {..} <- getRT
+--   alookup ev env
 
 -- | As 'lookupEVar', using the current value of the 'Epoch' counter in the runtime state.
-lookupVar :: TextVar -> Avaleryar (Term EVar)
-lookupVar v = do
-  ev <- EVar <$> getsRT epoch <*> pure v
-  lookupEVar ev
+-- lookupVar :: TextVar -> Avaleryar (Term EVar)
+-- lookupVar v = do
+--   ev <- EVar <$> getsRT epoch <*> pure v
+--   lookupEVar ev
 
 -- | Unifies two terms, updating the substitution in the state.
 unifyTerm :: Term EVar -> Term EVar -> Avaleryar ()
@@ -222,8 +223,8 @@ unifyTerm t t' = do
   unless (ts == ts') $ do
     rt@RT {..} <- getRT
     case (ts, ts') of
-      (Var v, _) -> putRT rt {env = Map.insert v ts' env}
-      (_, Var v) -> putRT rt {env = Map.insert v ts  env}
+      (Var v, _) -> putRT rt {env = Partition.joinElems (Var v) ts' env}
+      (_, Var v) -> putRT rt {env = Partition.joinElems (Var v) ts  env}
       _          -> empty -- ts /= ts', both are values
 
 -- | Apply the current substitution on the given 'Term'.  This function does path compression: if it
@@ -231,7 +232,7 @@ unifyTerm t t' = do
 -- variable, it will give it right back.
 subst :: Term EVar -> Avaleryar (Term EVar)
 subst v@(Val _)    = pure v
-subst var@(Var ev) = getsRT env >>= maybe (pure var) subst . Map.lookup ev
+subst var@(Var ev) = getsRT env >>= pure . flip Partition.rep var
 
 type Goal = BodyLit EVar
 
