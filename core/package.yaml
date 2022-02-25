@@ -15,7 +15,6 @@ library:
     - qq-literals
     - template-haskell
     - text
-    - unordered-containers
     - vector
     - wl-pprint-text
 

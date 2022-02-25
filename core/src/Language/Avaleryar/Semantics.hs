@@ -72,7 +72,7 @@ import           Control.Monad.State
 import           Data.Foldable
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
-import           Data.Maybe
+import           Data.Maybe                   (mapMaybe)
 import           Data.String
 import           Data.Vector                  (Vector)
 import qualified Data.Vector                  as Vector
