@@ -49,7 +49,7 @@ instance Monad m => Applicative (Stream m) where
   pure = return
   {-# INLINE pure #-}
   (<*>) = ap
-  {-# INLINE2 (<*>) #-}
+  {-# INLINE (<*>) #-}
 
 instance Monad m => Monad (Stream m) where
   return = Stream . return . One
