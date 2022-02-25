@@ -16,6 +16,7 @@ library:
     - template-haskell
     - text
     - unordered-containers
+    - vector
     - wl-pprint-text
 
 tests:

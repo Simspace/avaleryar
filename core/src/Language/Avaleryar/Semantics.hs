@@ -70,11 +70,12 @@ import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
-import qualified Data.HashSet                 as HashSet
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.Maybe
 import           Data.String
+import           Data.Vector                  (Vector)
+import qualified Data.Vector                  as Vector
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
@@ -282,7 +283,7 @@ compilePred rules =
   if all isFact rules
     then
       -- We precompute the set
-      let setOfVals = HashSet.fromList $ fmap (mapMaybe termVal . litTerms . ruleLit) rules
+      let setOfVals = Vector.fromList $ fmap (mapMaybe termVal . litTerms . ruleLit) rules
       in \arg@(Lit _ qas) -> do
         qas <- traverse subst qas
         let f term (allVals, vals) = case term of
@@ -293,7 +294,7 @@ compilePred rules =
         -- In that case, if the values of qas are in the set, the predicate succeeds.
         -- Otherwise, it fails.
         if allVals
-          then guard (HashSet.member vals setOfVals)
+          then guard (Vector.elem vals setOfVals)
           -- If qas aren't all values, we can't use the set and must fallback to the default behavior.
           -- This is because in this case the variables will be unified with the values, so it's not just
           -- a guard.
