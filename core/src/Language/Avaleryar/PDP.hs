@@ -20,6 +20,8 @@ import           Data.List                    (stripPrefix)
 import           Data.Map                     (Map)
 import           Data.Text                    (Text, pack)
 import qualified Data.Text                    as T
+import           Data.Vector                  (Vector)
+import qualified Data.Vector                  as Vector
 import           Data.Typeable                (Typeable)
 import           GHC.Generics                 (Generic)
 import           System.FilePath              (stripExtension)
@@ -140,18 +142,21 @@ retractAssertion = modifyRulesDb . retractRuleAssertion
 
 runDetailedQuery :: [Fact] -> Text -> [Term TextVar] -> PDP DetailedQueryResults
 runDetailedQuery facts p args  = do
-  answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p args
+  answers <- runDetailedWith (insertApplicationAssertion facts) $ compileQuery "system" p (Vector.fromList args)
   flip traverse answers $ \l -> do
      traverse (throwError . VarInQueryResults . unEVar) l
 
-runQuery :: [Fact] -> Text -> [Term TextVar] -> PDP QueryResults
-runQuery facts p args  = do
+runQueryVector :: [Fact] -> Text -> Vector (Term TextVar) -> PDP QueryResults
+runQueryVector facts p args  = do
   answers <- runAvaWith (insertApplicationAssertion facts) $ compileQuery "system" p args
   flip traverse answers $ \l -> do
      traverse (throwError . VarInQueryResults . unEVar) l
 
+runQuery :: [Fact] -> Text -> [Term TextVar] -> PDP QueryResults
+runQuery facts p args  = runQueryVector facts p (Vector.fromList args)
+
 runQuery' :: [Fact] -> Query -> PDP QueryResults
-runQuery' facts (Lit (Pred p _) as) = runQuery facts p as
+runQuery' facts (Lit (Pred p _) as) = runQueryVector facts p as
 
 queryPretty :: [Fact] -> Text -> [Term TextVar] -> PDP ()
 queryPretty facts p args = do
@@ -159,7 +164,7 @@ queryPretty facts p args = do
   liftIO $ mapM_ (putDoc . pretty . factToRule @TextVar) answers
 
 testQuery :: [Fact] -> Query -> PDP ()
-testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
+testQuery facts (Lit (Pred p _) as) = queryPretty facts p (Vector.toList as)
 
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
 insertApplicationAssertion :: [Fact] -> RulesDb -> RulesDb

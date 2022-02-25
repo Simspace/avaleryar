@@ -18,6 +18,8 @@ import           Data.List                    (isPrefixOf)
 import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (unpack, Text)
+import           Data.Vector                  (Vector, (!?))
+import qualified Data.Vector                  as Vector
 import           Options.Applicative          as Opts
 import           System.Exit                  (exitFailure)
 import           System.Console.Repline       as RL hiding (banner, options)
@@ -110,7 +112,7 @@ cmd q = do
   case parsed of
     Left err -> liftIO $ putStrLn err
     Right (Lit (Pred p _) args) ->
-      liftIO (runDetailedQuery handle facts p args) >>= either (liftIO . putStrLn . show) putAnswers
+      liftIO (runDetailedQuery handle facts p (Vector.toList args)) >>= either (liftIO . putStrLn . show) putAnswers
 
 -- | TODO: repl options a la ghci's @+t@.
 putAnswers :: MonadIO m => DetailedQueryResults -> m ()

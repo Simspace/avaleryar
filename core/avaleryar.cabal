@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 30fac0c3b148d219353f8644d0c0934b9b681991e4892964c8bbf9aba9738fc7
+-- hash: 98d84695e2ed9bf9a29be1f53517d51095cc126033cfa4bcfa0d713cee5f65d5
 
 name:           avaleryar
 version:        0.0.1.1
@@ -39,6 +39,7 @@ library
     , qq-literals
     , template-haskell
     , text
+    , vector
     , wl-pprint-text
   default-language: Haskell2010
 
@@ -67,6 +68,7 @@ test-suite avaleryar-tests
     , hspec
     , hspec-core
     , text
+    , vector
   default-language: Haskell2010
 
 benchmark avaleryar-benchmarks
@@ -81,5 +83,6 @@ benchmark avaleryar-benchmarks
     , base
     , criterion
     , text
+    , vector
     , wl-pprint-text
   default-language: Haskell2010

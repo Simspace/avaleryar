@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE QuasiQuotes       #-}
 
 module ParserSpec where

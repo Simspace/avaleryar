@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedLists            #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -74,6 +75,8 @@ import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.String
 import           Data.Text                    (Text, pack)
+import           Data.Vector                  (Vector, (!?))
+import qualified Data.Vector                  as Vector
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
 import           GHC.Generics                 (Generic)
@@ -253,13 +256,12 @@ resolve (assn `Says` l@(Lit p as)) = do
   resolver l
   Lit p <$> traverse subst as
 
-
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
-unifyArgs :: [Term EVar] -> [Term EVar] -> Avaleryar ()
-unifyArgs [] []         = pure ()
-unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
-unifyArgs _ _           = empty
+unifyArgs :: Vector (Term EVar) -> Vector (Term EVar) -> Avaleryar ()
+unifyArgs ts1 ts2 = do
+  guard (Vector.length ts1 == Vector.length ts2)
+  Vector.zipWithM_ unifyTerm ts1 ts2
 
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
@@ -288,7 +290,7 @@ emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
   where go (ARCurrent `Says` bl) = (ARTerm $ val assn) `Says` bl
         go bl                    = bl
 
-compileQuery :: String -> Text -> [Term TextVar] -> Avaleryar (Lit EVar)
+compileQuery :: String -> Text -> Vector (Term TextVar) -> Avaleryar (Lit EVar)
 compileQuery assn p args = resolve $ assn' `Says` (Lit (Pred p (length args)) (fmap (fmap (EVar (-1))) args))
   where assn' = case assn of
                   (':':_) -> ARNative (pack assn)
@@ -320,7 +322,7 @@ class ToNative a where
   -- list of 'Term's given.  Usually, the list will only have one value in it, but it can have more
   -- or fewer in the case of e.g., tuples.  Implementations /must/ ground-out every variable in the
   -- list, or the mode-checker will become unsound.
-  toNative :: a -> [Term EVar] -> Avaleryar ()
+  toNative :: a -> Vector (Term EVar) -> Avaleryar ()
 
   -- | Probably this should be 'outMode' for each argument expected in the list of 'Term's in
   -- 'toNative'.
@@ -388,12 +390,15 @@ instance (Valuable a, Valuable b, Valuable c, Valuable d, Valuable e, Valuable f
 -- here to ensure that we actually get a value from the substitution so that 'fromValue' might
 -- conceivably work.
 instance (Valuable a, ToNative b) => ToNative (a -> b) where
-  toNative f (x:xs) = do
-    Val x' <- subst x -- mode checking should make this safe (because of the 'inMode' below)
-    case fromValue x' of
-      Just a  -> toNative (f a) xs
-      Nothing -> empty
-  toNative _ _      = empty
+  toNative f xs =
+    case xs !? 0 of
+      Just x -> do
+        let rest = Vector.drop 1 xs
+        Val x' <- subst x -- mode checking should make this safe (because of the 'inMode' below)
+        case fromValue x' of
+          Just a  -> toNative (f a) rest
+          Nothing -> empty
+      _ -> empty
   inferMode = inMode : inferMode @b
 
 -- | Executes the IO action and produces the result.
@@ -412,7 +417,7 @@ mkNativePred :: forall a. (ToNative a) => Text -> a -> NativePred
 mkNativePred pn f = NativePred np moded
   where np (Lit _ args) = toNative f args
         modes = inferMode @a
-        moded = Lit (Pred pn $ length modes) (Var <$> modes)
+        moded = Lit (Pred pn $ length modes) (Vector.fromList (Var <$> modes))
 
 -- TODO: Feels like I should be able to do this less manually, maybe?
 mkNativeFact :: (Factual a) => a -> NativePred

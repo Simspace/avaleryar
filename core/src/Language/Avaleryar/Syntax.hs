@@ -6,11 +6,13 @@
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 {-|
 
@@ -54,11 +56,16 @@ import           Data.Map                     (Map)
 import           Data.String
 import           Data.Text                    (Text)
 import qualified Data.Text                    as T
+import           Data.Vector                  (Vector)
+import qualified Data.Vector                  as Vector
 import           Data.Void
 import           GHC.Generics                 (Generic)
 import           Text.Megaparsec              (SourcePos(..), pos1, unPos)
 import           Text.PrettyPrint.Leijen.Text
     (Doc, Pretty(..), brackets, colon, dot, empty, group, hsep, line, nest, parens, punctuate, space, vsep)
+
+instance (Hashable a) => Hashable (Vector a) where
+  hashWithSalt salt = hashWithSalt salt . Vector.toList
 
 data Value
   = I Int
@@ -103,17 +110,17 @@ instance Pretty v => Pretty (Term v) where
 
 -- | A literal is identified by a 'Pred' and a list of 'Term's, where the arity in the 'Pred' is the
 -- same as the length of the list of 'Term's in the argument list.
-data Lit v = Lit Pred [Term v] deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
+data Lit v = Lit Pred (Vector (Term v)) deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Lit v)
 instance Hashable v => Hashable (Lit v)
 
 instance Pretty v => Pretty (Lit v) where
-  pretty (Lit (Pred p _) as) = pretty p <> parens (hsep . punctuate "," $ fmap pretty as)
+  pretty (Lit (Pred p _) as) = pretty p <> parens (hsep . punctuate "," $ fmap pretty (Vector.toList as))
 
 -- | Convenience constructor for 'Lit's.
 lit :: Text -> [Term v] -> Lit v
-lit pn as = Lit (Pred pn (length as)) as
+lit pn as = Lit (Pred pn (length as)) (Vector.fromList as)
 
 -- | A reference to an assertion may either statically denote a native assertion or appear as a
 -- 'Term'.
@@ -145,17 +152,17 @@ instance Pretty v => Pretty (BodyLit v) where
   pretty (aref `Says` l) = pretty aref <> space <> "says" <> space <> pretty l
 
 -- | A rule has a head and a body made of 'BodyLit's.
-data Rule v = Rule (Lit v) [BodyLit v]
+data Rule v = Rule (Lit v) (Vector (BodyLit v))
   deriving (Eq, Ord, Read, Show, Functor, Foldable, Traversable, Generic)
 
 instance NFData v => NFData (Rule v)
 instance Hashable v => Hashable (Rule v)
 
 instance Pretty v => Pretty (Rule v) where
-  pretty (Rule hd body) = pretty hd <> bodyDoc body <> dot <> line
-    where bodyDoc [] = empty
-          bodyDoc _  = space <> ":-"
-                    <> group (nest 2 (line <> (vsep . punctuate "," $ fmap pretty body)))
+  pretty (Rule hd body) = pretty hd <> bodyDoc (Vector.toList body) <> dot <> line
+    where bodyDoc []    = empty
+          bodyDoc bodys = space <> ":-"
+                       <> group (nest 2 (line <> (vsep . punctuate "," $ fmap pretty bodys)))
 
 -- | Facts can be thought of as rules with no variables in the head and no body.  Instead, we
 -- represent them as 'Lit's with variables of type 'Void' to ensure they are facts by construction.
@@ -168,7 +175,7 @@ fact pn = lit pn . fmap val
 
 -- | 'Fact's are vacuously 'Rule's.
 factToRule :: Fact -> Rule v
-factToRule fct = Rule (vacuous fct) []
+factToRule fct = Rule (vacuous fct) mempty
 
 -- | 'Directive's provide a side-channel for metadata to pass from assertion authors into an
 -- implementation.  They're intended to be extracted at parse time, and are /never/ considered
@@ -267,7 +274,6 @@ instance Valuable Value where
 instance Valuable Text where
   toValue = T
   fromValue (T a) = Just a
-  fromValue _     = Nothing
 
 instance Valuable Int  where
   toValue = I

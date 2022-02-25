@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes       #-}
 {-# LANGUAGE TypeApplications  #-}
@@ -104,4 +105,3 @@ spec = do
       Result (Success answers) <- queryRules [qry| go(?b, ?x, 5) |]
                                              [rls| go(?b, ?x, ?n) :- :prim says silly(?n, ?x, ?b). |]
       length answers `shouldBe` 5
-

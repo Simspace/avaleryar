@@ -15,6 +15,7 @@ library:
     - qq-literals
     - template-haskell
     - text
+    - vector
     - wl-pprint-text
 
 tests:
@@ -36,6 +37,7 @@ tests:
       - directory
       - filepath
       - text
+      - vector
 
 benchmarks:
   avaleryar-benchmarks:
@@ -48,3 +50,4 @@ benchmarks:
       - criterion
       - wl-pprint-text
       - text
+      - vector

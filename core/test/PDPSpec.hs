@@ -10,6 +10,7 @@ import Language.Avaleryar.PDP
 import Language.Avaleryar.PDP.Handle as Hdl
 import Language.Avaleryar.Semantics
 import Language.Avaleryar.Syntax
+import qualified Data.Vector as Vector
 
 import Test.Hspec
 
@@ -23,7 +24,7 @@ spec = do
   describe "pdp configuration" $ do
     it "respects maxAnswers and maxDepth" $ do
       let conf  = either (error . show) id $ pdpConfigText ndb "foo(?x) :- :test says range(1, 20, ?x)."
-          ans n = [Lit (Pred "foo" 1) [Val $ I x] | x <- [1..n]]
+          ans n = [Lit (Pred "foo" 1) (Vector.fromList [Val $ I x]) | x <- [1..n]]
           rq    = runQuery' [] [qry| foo(?y) |]
 
       -- These feel a bit brittle.  Caveat lector.

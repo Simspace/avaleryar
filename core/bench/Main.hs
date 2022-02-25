@@ -2,12 +2,14 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE QuasiQuotes        #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE OverloadedLists    #-}
 
 module Main where
 
 import Criterion.Main
 import Data.Bool
 import Data.Text (pack)
+import qualified Data.Vector as Vector
 import Text.PrettyPrint.Leijen.Text (displayTStrict, renderPretty, vcat, Pretty(..))
 
 import Language.Avaleryar
@@ -135,7 +137,7 @@ tight n = do
 -- @
 parse :: Int -> Benchmark
 parse n = go txt
-  where rule x = Rule (lit (rn x) vars) [Says (ARTerm (val $ T "application")) (lit (rn x <> "-body") vars) | _ <- [1..5]]
+  where rule x = Rule (lit (rn x) vars) (Vector.fromList [Says (ARTerm (val $ T "application")) (lit (rn x <> "-body") vars) | _ <- [1..5]])
         rn x = pack ("rule-" <> show x)
         vars = Var <$> [pack "x", "y", "z", "w"]
         rs = [rule x | x <- [1..n]]
