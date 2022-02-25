@@ -76,7 +76,7 @@ runPDP' :: PDP a -> PDPConfig -> IO a
 runPDP' pdp conf = runPDP pdp conf >>= either (error . show) pure
 
 runAva :: Avaleryar a -> PDP (AvaResults a)
-runAva = runAvaWith id
+runAva = runAvaWith pure
 
 -- | Run an 'Avaleryar' computation inside a 'PDP', configured according to the latter's
 -- 'PDPConfig'.  The caller is given an opportunity to muck with the 'RulesDb' with which the
@@ -86,15 +86,16 @@ runAva = runAvaWith id
 -- NB: The system assertion from the config is added to the the rule database after the caller's
 -- mucking function has done its business to ensure that the caller can't sneakily override the
 -- @system@ assertion with their own.
-runAvaWith :: (RulesDb -> RulesDb) -> Avaleryar a -> PDP (AvaResults a)
+runAvaWith :: (RulesDb -> IO RulesDb) -> Avaleryar a -> PDP (AvaResults a)
 runAvaWith f ma = avaResults <$> runDetailedWith f ma
 
-runDetailedWith :: (RulesDb -> RulesDb) -> Avaleryar a -> PDP (DetailedResults a)
+runDetailedWith :: (RulesDb -> IO RulesDb) -> Avaleryar a -> PDP (DetailedResults a)
 runDetailedWith f ma = do
   PDPConfig {..} <- askConfig
   -- do 'f' *before* inserting the system assertion, to make sure the caller can't override it!
-  rdb            <- insertRuleAssertion "system" systemAssertion . f <$> getRulesDb
-  liftIO $ runAvaleryar' maxDepth maxAnswers (Db (f rdb) nativeAssertions) ma
+  rdb            <- (insertRuleAssertion "system" systemAssertion) <$> (liftIO . f =<< getRulesDb)
+  rdb' <- liftIO $ f rdb
+  liftIO $ runAvaleryar' maxDepth maxAnswers (Db rdb' nativeAssertions) ma
   -- is this exactly what I just said not to do  ^ ?
 
 checkRules :: [Rule RawVar] -> PDP ()
@@ -122,7 +123,8 @@ submitFile assn path facts = checkSubmit facts >> unsafeSubmitFile assn path
 unsafeSubmitAssertion :: Text -> [Rule RawVar] -> PDP ()
 unsafeSubmitAssertion assn rules = do
   checkRules rules
-  modifyRulesDb $ insertRuleAssertion assn (compileRules assn $ fmap (fmap unRawVar) rules)
+  compiledRules <- liftIO $ compileRules assn $ fmap (fmap unRawVar) rules
+  modifyRulesDb $ insertRuleAssertion assn compiledRules
 
 
 -- | TODO: ergonomics, protect "system", etc.
@@ -162,8 +164,10 @@ testQuery :: [Fact] -> Query -> PDP ()
 testQuery facts (Lit (Pred p _) as) = queryPretty facts p as
 
 -- | Insert an @application@ assertion into a 'RulesDb' providing the given facts.
-insertApplicationAssertion :: [Fact] -> RulesDb -> RulesDb
-insertApplicationAssertion = insertRuleAssertion "application" . compileRules "application" . fmap factToRule
+insertApplicationAssertion :: [Fact] -> RulesDb -> IO RulesDb
+insertApplicationAssertion facts ruleDB = do
+  rules <- compileRules "application" $ fmap factToRule facts
+  pure $ insertRuleAssertion "application" rules ruleDB
 
 nativeModes :: NativeDb -> Map Text (Map Pred ModedLit)
 nativeModes = fmap (fmap nativeSig) . unNativeDb
@@ -176,22 +180,25 @@ stripPathPrefix pfx path = maybe path id $ stripPrefix pfx path
 
 -- NB: The given file is parsed as the @system@ assertion regardless of its filename, which is
 -- almost guaranteed to be what you want.
-pdpConfig :: NativeDb -> FilePath -> IO (Either PDPError PDPConfig)
-pdpConfig db fp = runExceptT $ do
+pdpConfig :: NativeDb -> FilePath -> ExceptT PDPError IO PDPConfig
+pdpConfig db fp = do
   sys <- ExceptT . liftIO . fmap (first ParseError . coerce) $ parseFile fp
   ExceptT . pure . first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
+  rules <- liftIO $ compileRules "system" $ fmap (fmap unRawVar) sys
+  pure $ PDPConfig rules db Nothing 50 10
 
-pdpConfigText :: NativeDb -> Text -> Either PDPError PDPConfig
+pdpConfigText :: NativeDb -> Text -> ExceptT PDPError IO PDPConfig
 pdpConfigText db text = do
-  sys <- first ParseError . coerce $ parseText "system" text
-  first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
+  sys <- liftEither . first ParseError . coerce $ parseText "system" text
+  liftEither . first ModeError $ modeCheck (nativeModes db) sys
+  rules <- liftIO $ compileRules "system" $ fmap (fmap unRawVar) sys
+  pure $ PDPConfig rules db Nothing 50 10
 
-pdpConfigRules :: NativeDb -> [Rule RawVar] -> Either PDPError PDPConfig
+pdpConfigRules :: NativeDb -> [Rule RawVar] -> ExceptT PDPError IO PDPConfig
 pdpConfigRules db sys = do
-  first ModeError $ modeCheck (nativeModes db) sys
-  pure $ PDPConfig (compileRules "system" $ fmap (fmap unRawVar) sys) db Nothing 50 10
+  liftEither . first ModeError $ modeCheck (nativeModes db) sys
+  rules <- liftIO $ compileRules "system" $ fmap (fmap unRawVar) sys
+  pure $ PDPConfig rules db Nothing 50 10
 
 
 demoNativeDb :: NativeDb
@@ -204,7 +211,7 @@ demoNativeDb = mkNativeDb "base" preds
                 , mkNativePred "lines" $ fmap Solely . T.lines]
 
 demoConfig :: IO (Either PDPError PDPConfig)
-demoConfig = fmap addSubmit <$> pdpConfig demoNativeDb "system.ava"
+demoConfig = runExceptT (addSubmit <$> pdpConfig demoNativeDb "system.ava")
   where addSubmit conf = conf { submitQuery = Just [qry| may(submit) |]}
 
 -- Everyone: Alec, why not just use lenses?

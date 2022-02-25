@@ -10,6 +10,7 @@
 module Language.Avaleryar.Repl where
 
 import           Control.Applicative
+import           Control.Monad.Except
 import           Control.Monad.Reader
 import           Data.Containers.ListUtils    (nubOrd)
 import           Data.Foldable
@@ -59,7 +60,7 @@ repl conf = replWithHandle conf mempty
 main :: IO ()
 main = do
   Args {..}  <- execParser (info parseArgs mempty)
-  conf <- pdpConfig demoNativeDb systemAssn >>= either diePretty pure
+  conf <- runExceptT (pdpConfig demoNativeDb systemAssn) >>= either diePretty pure
   let loadAssns h = for_ otherAssns $ either diePretty pure <=< unsafeSubmitFile h Nothing
       displayResults = traverse_ $ either putStrLn (traverse_ $ uncurry putTestResults)
 

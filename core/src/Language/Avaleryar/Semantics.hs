@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -70,6 +71,7 @@ import           Control.DeepSeq              (NFData)
 import           Control.Monad.Except
 import           Control.Monad.State
 import           Data.Foldable
+import           Data.IORef
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
 import           Data.String
@@ -135,9 +137,10 @@ loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
-  { env   :: Env   -- ^ The accumulated substitution
-  , epoch :: Epoch -- ^ A counter for generating fresh variables
-  , db    :: Db    -- ^ The database of compiled predicates
+  { env          :: !Env    -- ^ The accumulated substitution
+  , epoch        :: !Epoch  -- ^ A counter for generating fresh variables
+  , db           :: !Db     -- ^ The database of compiled predicates
+  , cacheVersion :: !Int    -- ^ Used to invalide cache when adding and removing rules.
   } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
@@ -184,7 +187,7 @@ runAvaleryar' :: Int -> Int -> Db -> Avaleryar a -> IO (DetailedResults a)
 runAvaleryar' d b db ava = do
   start <- getMonotonicTime
   res   <- runM' (Just d) (Just b)
-           . flip evalStateT (RT mempty 0 db)
+           . flip evalStateT (RT mempty 0 db 0)
            . unAvaleryar $ ava
   end   <- getMonotonicTime
   case res of
@@ -253,6 +256,22 @@ resolve (assn `Says` l@(Lit p as)) = do
   resolver l
   Lit p <$> traverse subst as
 
+-- | Just like resolve, except that Instead of looking up the resolver every
+-- time, it is cached inside an IORef. The cached value is invalidated by
+-- incrementing cacheVersion, and is done whenever the rules change.
+resolveAndCache :: IORef (Int, Lit EVar -> Avaleryar ()) -> Goal -> Avaleryar (Lit EVar)
+resolveAndCache ref goal@(assn `Says` l@(Lit p as)) = do
+  currentVer <- getsRT cacheVersion
+  resolver <- liftIO (readIORef ref) >>= \case
+    (resVer, res) | currentVer == resVer -> do
+      yield' $ pure res
+    _ -> do
+      res <- yield' $ loadResolver assn p
+      liftIO $ writeIORef ref (currentVer, res)
+      pure res
+
+  yield' $ resolver l
+  Lit p <$> traverse subst as
 
 -- | A slightly safer version of @'zipWithM_' 'unifyTerm'@ that ensures its argument lists are the
 -- same length.
@@ -264,24 +283,28 @@ unifyArgs _ _           = empty
 -- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
 -- given a query that applies, and that the rules it was handed are all for the same predicate.
 -- This is not the function you want.  FIXME: Suck less
-compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
-compilePred rules (Lit _ qas) = do
-  rt@RT {..} <- getRT
-  putRT rt {epoch = succ epoch}
-  let rules' = fmap (EVar epoch) <$> rules
-      go (Rule (Lit _ has) body) = do
-        unifyArgs has qas
-        traverse_ resolve body
-  msum $ go <$> rules'
+compilePred :: [Rule TextVar] -> IO (Lit EVar -> Avaleryar ())
+compilePred rules = do
+  let makeCaches (Rule _lit body) = traverse (const $ newIORef (-1, \_ -> pure ())) body
+  cachess :: [[IORef (Int, Lit EVar -> Avaleryar ())]]  <- traverse makeCaches rules
+  pure $ \(Lit _ qas) -> do
+    rt@RT {..} <- getRT
+    putRT rt {epoch = succ epoch}
+    let rules' = fmap (EVar epoch) <$> rules
+        go caches (Rule (Lit _ has) body) = do
+          unifyArgs has qas
+          traverse_ (uncurry resolveAndCache) (zip caches body)
+    msum $ uncurry go <$> zip cachess rules'
 
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
 --
 -- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
-compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
-compileRules assn rules =
-  fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
-                                           | r@(Rule (Lit p _) _) <- rules]
+compileRules :: Text -> [Rule TextVar] -> IO (Map Pred (Lit EVar -> Avaleryar ()))
+compileRules assn rules = do
+  let rulesMap = Map.fromListWith (++) [ (p, [emplaceCurrentAssertion assn r])
+                                       | r@(Rule (Lit p _) _) <- rules ]
+  fmap Map.fromList . traverse (\(p, rs) -> (p,) <$> compilePred rs) $ Map.toList rulesMap
 
 emplaceCurrentAssertion :: Text -> Rule v -> Rule v
 emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
