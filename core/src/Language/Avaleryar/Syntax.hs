@@ -170,6 +170,16 @@ fact pn = lit pn . fmap val
 factToRule :: Fact -> Rule v
 factToRule fct = Rule (vacuous fct) []
 
+-- | Some 'Lit's are 'Fact's.
+litToFact :: Lit v -> Maybe Fact
+litToFact = traverse (const Nothing)
+
+-- | Some 'Rule's are 'Fact's.
+ruleToFact :: Rule v -> Maybe Fact
+ruleToFact (Rule h []) = litToFact h
+ruleToFact _           = Nothing
+
+
 -- | 'Directive's provide a side-channel for metadata to pass from assertion authors into an
 -- implementation.  They're intended to be extracted at parse time, and are /never/ considered
 -- during evaluation.  However, an intermediate processor might use information from a directive to

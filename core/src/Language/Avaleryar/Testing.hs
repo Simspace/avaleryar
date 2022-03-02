@@ -187,15 +187,15 @@ extractTests dirs = go <$> cases
 
 -- | Turn a 'Rule' that's really a fact into a 'Fact' in fact.  Hideously unsafe if you don't
 -- already know for sure it'll succeed.  This function really shouldn't escape this module.
-ruleToFact :: Rule v -> Fact
-ruleToFact (Rule hd []) = fmap go hd
+unsafeRuleToFact :: Rule v -> Fact
+unsafeRuleToFact (Rule hd []) = fmap go hd
   where go _ = error "variable in rule coerced to fact---absurdity!"
-ruleToFact _ = error "body lits in rule coerced to fact---insanity!"
+unsafeRuleToFact _ = error "body lits in rule coerced to fact---insanity!"
 
 -- | Construct an @application@ assertion to provide along with the test queries by picking the
 -- first assertion in the 'testDb' with the name (or, well alias) @application@.
 appAssertion :: Test -> [Fact]
-appAssertion = fmap ruleToFact . concat . lookup "application" . fst . testDb
+appAssertion = fmap unsafeRuleToFact . concat . lookup "application" . fst . testDb
 
 parseTestFile :: FilePath -> IO (Either String [Test])
 parseTestFile fp = fmap (extractTests . fst) <$> parseFile' fp
