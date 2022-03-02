@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 30fac0c3b148d219353f8644d0c0934b9b681991e4892964c8bbf9aba9738fc7
+-- hash: f8cb069a0604c1962ead2433e06e9d15fe5c8b4130dd40019dfb22f3cd57183e
 
 name:           avaleryar
 version:        0.0.1.1
@@ -39,6 +39,7 @@ library
     , qq-literals
     , template-haskell
     , text
+    , vector
     , wl-pprint-text
   default-language: Haskell2010
 

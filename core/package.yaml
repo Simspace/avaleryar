@@ -15,6 +15,7 @@ library:
     - qq-literals
     - template-haskell
     - text
+    - vector
     - wl-pprint-text
 
 tests:

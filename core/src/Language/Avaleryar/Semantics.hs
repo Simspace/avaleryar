@@ -72,7 +72,10 @@ import           Control.Monad.State
 import           Data.Foldable
 import           Data.Map                     (Map)
 import qualified Data.Map                     as Map
+import           Data.Maybe                   (mapMaybe)
 import           Data.String
+import           Data.Vector                  (Vector)
+import qualified Data.Vector                  as Vector
 import           Data.Text                    (Text, pack)
 import           Data.Void                    (vacuous)
 import           GHC.Clock                    (getMonotonicTime)
@@ -86,8 +89,8 @@ import Language.Avaleryar.Syntax
 -- | A native predicate carries not just its evaluation function, but also its signature, so it may
 -- be consulted when new assertions are submitted in order to mode-check them.
 data NativePred = NativePred
-  { nativePred :: Lit EVar -> Avaleryar ()
-  , nativeSig  :: ModedLit
+  { nativePred :: !(Lit EVar -> Avaleryar ())
+  , nativeSig  :: !ModedLit
   } deriving Generic
 
 instance NFData NativePred
@@ -109,8 +112,8 @@ instance NFData NativeDb
 
 -- TODO: newtype harder (newtype RuleAssertion c = ..., newtype NativeAssertion c = ...)
 data Db = Db
-  { rulesDb  :: RulesDb
-  , nativeDb :: NativeDb
+  { rulesDb  :: !RulesDb
+  , nativeDb :: !NativeDb
   } deriving (Generic)
 
 instance Semigroup Db where
@@ -135,9 +138,9 @@ loadNative n p = getsRT (unNativeDb . nativeDb . db) >>= alookup n >>= alookup p
 
 -- | Runtime state for 'Avaleryar' computations.
 data RT = RT
-  { env   :: Env   -- ^ The accumulated substitution
-  , epoch :: Epoch -- ^ A counter for generating fresh variables
-  , db    :: Db    -- ^ The database of compiled predicates
+  { env   :: !Env   -- ^ The accumulated substitution
+  , epoch :: !Epoch -- ^ A counter for generating fresh variables
+  , db    :: !Db    -- ^ The database of compiled predicates
   } deriving (Generic)
 
 -- | Allegedly more-detailed results from an 'Avaleryar' computation.  A more ergonomic type is
@@ -261,11 +264,8 @@ unifyArgs [] []         = pure ()
 unifyArgs (x:xs) (y:ys) = unifyTerm x y >> unifyArgs xs ys
 unifyArgs _ _           = empty
 
--- | NB: 'compilePred' doesn't look at the 'Pred' for any of the given rules, it assumes it was
--- given a query that applies, and that the rules it was handed are all for the same predicate.
--- This is not the function you want.  FIXME: Suck less
-compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
-compilePred rules (Lit _ qas) = do
+compilePredDefault :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePredDefault rules (Lit _ qas) = do
   rt@RT {..} <- getRT
   putRT rt {epoch = succ epoch}
   let rules' = fmap (EVar epoch) <$> rules
@@ -274,14 +274,65 @@ compilePred rules (Lit _ qas) = do
         traverse_ resolve body
   msum $ go <$> rules'
 
+-- | NB: 'compilePred' assumes it was given a query that applies, and that the
+-- rules it was handed are all for the same predicate. This is not the function
+-- you want.
+compilePred :: [Rule TextVar] -> Lit EVar -> Avaleryar ()
+compilePred rules =
+  -- If the rules are all facts, unification may be done using a set in some common cases.
+  if all isFact rules
+    then
+      -- We precompute the set
+      let setOfVals = Vector.fromList $ fmap (mapMaybe termVal . litTerms . ruleLit) rules
+      in \arg@(Lit _ qas) -> do
+        qas <- traverse subst qas
+        let f term (allVals, vals) = case term of
+                Val v -> (allVals, v:vals)
+                Var _ -> (False, vals)
+        let (allVals, vals) = foldr f (True, []) qas
+        -- This only works if the unification is being done between only values.
+        -- In that case, if the values of qas are in the set, the predicate succeeds.
+        -- Otherwise, it fails.
+        if allVals
+          then guard (Vector.elem vals setOfVals)
+          -- If qas aren't all values, we can't use the set and must fallback to the default behavior.
+          -- This is because in this case the variables will be unified with the values, so it's not just
+          -- a guard.
+          else compilePredDefault rules arg
+    else compilePredDefault rules
+  where
+    -- A fact is a rule that has no body and matches directly on values
+    isFact :: Rule a -> Bool
+    isFact rule = null (ruleBody rule) && all termIsVal (litTerms $ ruleLit rule)
+
+    ruleBody :: Rule a -> [BodyLit a]
+    ruleBody  (Rule _lit body) = body
+
+    ruleLit :: Rule a -> Lit a
+    ruleLit  (Rule lit _body) = lit
+
+    litTerms :: Lit a -> [Term a]
+    litTerms (Lit _pred terms) = terms
+
+    ruleTerms :: Rule a -> [Term a]
+    ruleTerms = litTerms . ruleLit
+
+    termVal :: Term a -> Maybe Value
+    termVal (Val v) = Just v
+    termVal (Var _) = Nothing
+
+    termIsVal :: Term a -> Bool
+    termIsVal (Val _) = True
+    termIsVal (Var _) = False
+
 -- | Turn a list of 'Rule's into a map from their names to code that executes them.
 --
 -- Substitutes the given assertion for references to 'ARCurrent' in the bodies of the rules.  This
 -- is somewhat gross, and needs to be reexamined in the fullness of time.
 compileRules :: Text -> [Rule TextVar] -> Map Pred (Lit EVar -> Avaleryar ())
 compileRules assn rules =
-  fmap compilePred $ Map.fromListWith (++) [(p, [emplaceCurrentAssertion assn r])
-                                           | r@(Rule (Lit p _) _) <- rules]
+  fmap compilePred $ Map.fromListWith (++) [ (p, [emplaceCurrentAssertion assn r])
+                                           | r@(Rule (Lit p _) _) <- rules ]
 
 emplaceCurrentAssertion :: Text -> Rule v -> Rule v
 emplaceCurrentAssertion assn (Rule l b) = Rule l (go <$> b)
